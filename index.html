@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f5ef" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Money Pots" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>Money Pots</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Tagesgeldkonto Ledger</p>
+          <h1>Money Pots</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" id="exportData" title="Export backup" aria-label="Export backup">
+            <span aria-hidden="true">&#8681;</span>
+          </button>
+          <label class="icon-button file-button" title="Import backup" aria-label="Import backup">
+            <span aria-hidden="true">&#8679;</span>
+            <input id="importData" type="file" accept="application/json" />
+          </label>
+        </div>
+      </header>
+
+      <main>
+        <section class="summary-grid" aria-label="Account summary">
+          <div class="summary-panel primary">
+            <p>Total assigned</p>
+            <strong id="totalBalance">&euro;0.00</strong>
+            <span id="potCount">0 pots</span>
+          </div>
+          <div class="summary-panel">
+            <p>Monthly transfer</p>
+            <strong id="monthlyAmount">&euro;0.00</strong>
+            <span id="nextTransfer">No schedule</span>
+          </div>
+          <div class="summary-panel">
+            <p>Allocation</p>
+            <strong id="allocationTotal">0%</strong>
+            <span id="allocationStatus">Needs setup</span>
+          </div>
+          <div class="summary-panel">
+            <p>Monthly interest</p>
+            <strong id="monthlyInterest">&euro;0.00</strong>
+            <span id="interestApy">0.00% APY</span>
+          </div>
+        </section>
+
+        <nav class="tabs" aria-label="Views">
+          <button class="tab active" data-view="overview">Overview</button>
+          <button class="tab" data-view="activity">Transactions</button>
+          <button class="tab" data-view="settings">Settings</button>
+        </nav>
+
+        <section class="view active" id="overviewView">
+          <div class="section-heading">
+            <div>
+              <h2>Pots</h2>
+              <p id="scheduleHint">Scheduled split is ready.</p>
+            </div>
+            <button class="primary-action" id="postTransfer">Post monthly split</button>
+          </div>
+          <div class="pots-grid" id="potsGrid"></div>
+        </section>
+
+        <section class="view" id="activityView">
+          <div class="two-column">
+            <section class="tool-panel">
+              <h2>New transaction</h2>
+              <form id="transactionForm" class="form-grid">
+                <label>
+                  Type
+                  <select id="txType">
+                    <option value="addition">Addition</option>
+                    <option value="withdrawal">Withdrawal</option>
+                    <option value="set">Set pot balance</option>
+                    <option value="transfer">Move between pots</option>
+                  </select>
+                </label>
+                <label>
+                  Pot
+                  <select id="txPot"></select>
+                </label>
+                <label id="toPotWrap" class="hidden">
+                  To pot
+                  <select id="txToPot"></select>
+                </label>
+                <label>
+                  Amount
+                  <input id="txAmount" type="text" inputmode="decimal" autocomplete="off" required />
+                </label>
+                <label>
+                  Date
+                  <input id="txDate" type="date" required />
+                </label>
+                <label class="full">
+                  Note
+                  <input id="txNote" type="text" maxlength="80" placeholder="Optional" />
+                </label>
+                <button class="primary-action full" type="submit">Save transaction</button>
+              </form>
+            </section>
+
+            <section class="history-panel">
+              <div class="section-heading compact">
+                <h2>History</h2>
+                <button class="secondary-action" id="clearFilters">Clear filters</button>
+              </div>
+              <div class="filters">
+                <select id="historyPot"></select>
+                <select id="historyType">
+                  <option value="all">All types</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="addition">Additions</option>
+                  <option value="withdrawal">Withdrawals</option>
+                  <option value="set">Balance edits</option>
+                  <option value="transfer">Moves</option>
+                  <option value="deleted">Deleted pots</option>
+                </select>
+              </div>
+              <div class="transaction-list" id="transactionList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="settingsView">
+          <div class="two-column">
+            <section class="tool-panel">
+              <h2>Monthly split</h2>
+              <form id="settingsForm" class="form-grid">
+                <label>
+                  Transfer amount
+                  <input id="settingAmount" type="text" inputmode="decimal" autocomplete="off" required />
+                </label>
+                <label>
+                  Arrival day
+                  <input id="settingDay" type="number" inputmode="numeric" min="1" max="28" step="1" required />
+                </label>
+                <label>
+                  Interest APY
+                  <input id="settingApy" type="text" inputmode="decimal" autocomplete="off" required />
+                </label>
+                <label>
+                  Currency
+                  <select id="settingCurrency">
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                    <option value="GBP">GBP</option>
+                    <option value="CHF">CHF</option>
+                  </select>
+                </label>
+                <label class="toggle full">
+                  <input id="settingAutoPost" type="checkbox" />
+                  <span>Post due monthly splits automatically when the app opens</span>
+                </label>
+                <button class="primary-action full" type="submit">Save schedule</button>
+              </form>
+            </section>
+
+            <section class="tool-panel">
+              <h2>Pot editor</h2>
+              <form id="potForm" class="form-grid">
+                <input id="potId" type="hidden" />
+                <label>
+                  Name
+                  <input id="potName" type="text" maxlength="32" required />
+                </label>
+                <label>
+                  Current amount
+                  <input id="potBalance" type="text" inputmode="decimal" autocomplete="off" required />
+                </label>
+                <label>
+                  Allocation %
+                  <input id="potAllocation" type="text" inputmode="decimal" autocomplete="off" required />
+                </label>
+                <label>
+                  Target
+                  <input id="potTarget" type="text" inputmode="decimal" autocomplete="off" />
+                </label>
+                <label>
+                  Color
+                  <input id="potColor" type="color" />
+                </label>
+                <div class="button-row full">
+                  <button class="primary-action" type="submit">Save pot</button>
+                  <button class="secondary-action" type="button" id="resetPotForm">New pot</button>
+                  <button class="danger-action" type="button" id="deletePot">Delete</button>
+                </div>
+              </form>
+              <div class="editor-list" id="editorList"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="potCardTemplate">
+      <article class="pot-card">
+        <div class="pot-card-header">
+          <div class="pot-title">
+            <span class="color-dot"></span>
+            <h3></h3>
+          </div>
+          <button class="icon-button small edit-pot" title="Edit pot" aria-label="Edit pot">&#9998;</button>
+        </div>
+        <strong class="pot-balance"></strong>
+        <div class="progress-track">
+          <span class="progress-fill"></span>
+        </div>
+        <div class="pot-meta">
+          <span class="pot-allocation"></span>
+          <span class="pot-target"></span>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>

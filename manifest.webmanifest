@@ -1,0 +1,18 @@
+{
+  "name": "Money Pots",
+  "short_name": "Money Pots",
+  "description": "A private virtual pot ledger for Tagesgeldkonto savings.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#23695b",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
