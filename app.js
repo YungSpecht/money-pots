@@ -1,37 +1,32 @@
 const STORAGE_KEY = "money-pots-v1";
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const DEFAULT_THEME = {
-  accent: "#23695b",
-  header: "#163f39",
-  background: "#f7f5ef",
-  surface: "#ffffff",
+  accent: "#45c6a3",
+  header: "#12362f",
+  background: "#10161d",
+  surface: "#17212b",
 };
-const POT_COLOR_PRESETS = ["#23695b", "#b06032", "#3f6fa9", "#7557a8", "#b74965", "#9b6b2f", "#4f7d3a", "#4e5969"];
+const POT_COLOR_PRESETS = ["#45c6a3", "#f08a5d", "#6aa8ff", "#b692f6", "#ee6f9f", "#e3b45f", "#7bd88f", "#98a2b3"];
 const THEME_PRESETS = [
-  { accent: "#23695b", header: "#163f39", background: "#f7f5ef", surface: "#ffffff" },
-  { accent: "#245f9e", header: "#173b63", background: "#f4f7fb", surface: "#ffffff" },
-  { accent: "#7a4f9f", header: "#46305c", background: "#f8f5fb", surface: "#ffffff" },
-  { accent: "#8a4b38", header: "#523126", background: "#f8f4ef", surface: "#ffffff" },
-  { accent: "#3f6f52", header: "#264734", background: "#f3f7f1", surface: "#ffffff" },
-  { accent: "#545f72", header: "#303744", background: "#f4f5f7", surface: "#ffffff" },
+  { accent: "#45c6a3", header: "#12362f", background: "#10161d", surface: "#17212b" },
+  { accent: "#6aa8ff", header: "#152f4d", background: "#0e1520", surface: "#162231" },
+  { accent: "#b692f6", header: "#2d2146", background: "#12101a", surface: "#1e1a2a" },
+  { accent: "#f08a5d", header: "#452417", background: "#16110e", surface: "#241a15" },
+  { accent: "#7bd88f", header: "#203b29", background: "#0f1712", surface: "#17231b" },
+  { accent: "#e3b45f", header: "#43351a", background: "#14130f", surface: "#211f17" },
 ];
 
 const defaultState = {
   settings: {
     currency: "EUR",
-    monthlyTransfer: 1200,
-    arrivalDay: 1,
-    interestApy: 2.5,
+    monthlyTransfer: "",
+    arrivalDay: "",
+    interestApy: "",
     autoPost: false,
     lastAutoPostMonth: "",
     theme: { ...DEFAULT_THEME },
   },
-  pots: [
-    { id: crypto.randomUUID(), name: "Emergency", balance: 2500, allocation: 35, target: 8000, color: "#23695b" },
-    { id: crypto.randomUUID(), name: "Taxes", balance: 900, allocation: 25, target: 4000, color: "#b06032" },
-    { id: crypto.randomUUID(), name: "Travel", balance: 650, allocation: 20, target: 2500, color: "#3f6fa9" },
-    { id: crypto.randomUUID(), name: "Investing", balance: 1200, allocation: 20, target: 0, color: "#7557a8" },
-  ],
+  pots: [],
   transactions: [],
 };
 
@@ -146,6 +141,7 @@ function allocationTotal() {
 }
 
 function nextTransferDate() {
+  if (!state.settings.arrivalDay) return null;
   const now = new Date();
   const day = Number(state.settings.arrivalDay || 1);
   let candidate = new Date(now.getFullYear(), now.getMonth(), day);
@@ -163,6 +159,7 @@ function monthKey(date) {
 }
 
 function transferDue() {
+  if (!state.settings.arrivalDay || !state.settings.monthlyTransfer) return false;
   const now = startOfToday();
   const scheduled = new Date(now.getFullYear(), now.getMonth(), Number(state.settings.arrivalDay || 1));
   return scheduled <= now && state.settings.lastAutoPostMonth !== monthKey(now);
@@ -231,20 +228,24 @@ function renderSummary() {
   const total = totalBalance();
   const allocation = allocationTotal();
   const monthlyInterest = total * (Number(state.settings.interestApy || 0) / 100 / 12);
+  const nextTransfer = nextTransferDate();
   els.totalBalance.textContent = money(total);
   els.potCount.textContent = `${state.pots.length} ${state.pots.length === 1 ? "pot" : "pots"}`;
-  els.monthlyAmount.textContent = money(state.settings.monthlyTransfer);
-  els.nextTransfer.textContent = `Next on ${nextTransferDate().toLocaleDateString()}`;
+  els.monthlyAmount.textContent = state.settings.monthlyTransfer === "" ? "Not set" : money(state.settings.monthlyTransfer);
+  els.nextTransfer.textContent = nextTransfer ? `Next on ${nextTransfer.toLocaleDateString()}` : "No schedule";
   els.allocationTotal.textContent = percent(allocation);
   els.allocationStatus.textContent = allocation > 0 ? "Split uses relative shares" : "Needs setup";
   els.monthlyInterest.textContent = money(monthlyInterest);
-  els.interestApy.textContent = `${Number(state.settings.interestApy || 0).toFixed(2)}% APY`;
+  els.interestApy.textContent = state.settings.interestApy === "" ? "No APY" : `${Number(state.settings.interestApy || 0).toFixed(2)}% APY`;
 
-  if (transferDue()) {
+  if (!state.settings.monthlyTransfer || !state.settings.arrivalDay) {
+    els.scheduleHint.textContent = "Add a monthly transfer in Settings.";
+    els.postTransfer.disabled = true;
+  } else if (transferDue()) {
     els.scheduleHint.textContent = "This month's split is due.";
     els.postTransfer.disabled = false;
   } else {
-    els.scheduleHint.textContent = `Next split posts on ${nextTransferDate().toLocaleDateString()}.`;
+    els.scheduleHint.textContent = `Next split posts on ${nextTransfer.toLocaleDateString()}.`;
     els.postTransfer.disabled = false;
   }
 }
@@ -413,10 +414,10 @@ function fillPotForm(id) {
 function resetPotForm() {
   els.potId.value = "";
   els.potName.value = "";
-  els.potBalance.value = "0";
-  els.potAllocation.value = "0";
+  els.potBalance.value = "";
+  els.potAllocation.value = "";
   els.potTarget.value = "";
-  els.potColor.value = "#23695b";
+  els.potColor.value = DEFAULT_THEME.accent;
   els.deletePot.hidden = true;
 }
 
@@ -486,9 +487,9 @@ els.transactionForm.addEventListener("submit", (event) => {
 
 els.settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  state.settings.monthlyTransfer = roundMoney(els.settingAmount.value);
-  state.settings.arrivalDay = Math.min(28, Math.max(1, parseNumber(els.settingDay.value || 1)));
-  state.settings.interestApy = parseNumber(els.settingApy.value || 0);
+  state.settings.monthlyTransfer = els.settingAmount.value.trim() === "" ? "" : roundMoney(els.settingAmount.value);
+  state.settings.arrivalDay = els.settingDay.value === "" ? "" : Math.min(28, Math.max(1, parseNumber(els.settingDay.value)));
+  state.settings.interestApy = els.settingApy.value.trim() === "" ? "" : parseNumber(els.settingApy.value);
   state.settings.currency = els.settingCurrency.value;
   state.settings.autoPost = els.settingAutoPost.checked;
   saveState();
