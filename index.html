@@ -166,6 +166,33 @@
             </section>
 
             <section class="tool-panel">
+              <h2>Appearance</h2>
+              <form id="appearanceForm" class="form-grid">
+                <label>
+                  Accent
+                  <input id="themeAccent" type="color" />
+                </label>
+                <label>
+                  Header
+                  <input id="themeHeader" type="color" />
+                </label>
+                <label>
+                  Background
+                  <input id="themeBackground" type="color" />
+                </label>
+                <label>
+                  Panels
+                  <input id="themeSurface" type="color" />
+                </label>
+                <div class="swatch-grid full" id="themeSwatches" aria-label="Theme presets"></div>
+                <button class="primary-action full" type="submit">Save colors</button>
+              </form>
+              <div class="danger-zone">
+                <button class="danger-action full-width" type="button" id="resetAllData">Reset everything</button>
+              </div>
+            </section>
+
+            <section class="tool-panel">
               <h2>Pot editor</h2>
               <form id="potForm" class="form-grid">
                 <input id="potId" type="hidden" />
@@ -189,6 +216,7 @@
                   Color
                   <input id="potColor" type="color" />
                 </label>
+                <div class="swatch-grid full" id="potSwatches" aria-label="Pot color presets"></div>
                 <div class="button-row full">
                   <button class="primary-action" type="submit">Save pot</button>
                   <button class="secondary-action" type="button" id="resetPotForm">New pot</button>

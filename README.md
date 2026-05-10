@@ -6,10 +6,12 @@ A static private ledger for managing virtual savings pots over one Tagesgeldkont
 
 - Create, edit, target, color-code, and delete virtual money pots.
 - Configure a monthly incoming transfer and split it across pots by allocation shares.
+- Customize the app theme and individual pot colors.
 - Post scheduled transfers manually or automatically when the app opens after the arrival date.
 - Record additions, withdrawals, balance corrections, and moves between pots.
 - Filter transaction history by pot and transaction type.
 - Export and import a JSON backup.
+- Reset local app data from Settings.
 - Installable PWA metadata and offline cache for GitHub Pages hosting.
 
 All data is stored locally in the browser with `localStorage`. No bank connection or server sync is included.

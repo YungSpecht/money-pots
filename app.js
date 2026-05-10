@@ -1,5 +1,20 @@
 const STORAGE_KEY = "money-pots-v1";
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const DEFAULT_THEME = {
+  accent: "#23695b",
+  header: "#163f39",
+  background: "#f7f5ef",
+  surface: "#ffffff",
+};
+const POT_COLOR_PRESETS = ["#23695b", "#b06032", "#3f6fa9", "#7557a8", "#b74965", "#9b6b2f", "#4f7d3a", "#4e5969"];
+const THEME_PRESETS = [
+  { accent: "#23695b", header: "#163f39", background: "#f7f5ef", surface: "#ffffff" },
+  { accent: "#245f9e", header: "#173b63", background: "#f4f7fb", surface: "#ffffff" },
+  { accent: "#7a4f9f", header: "#46305c", background: "#f8f5fb", surface: "#ffffff" },
+  { accent: "#8a4b38", header: "#523126", background: "#f8f4ef", surface: "#ffffff" },
+  { accent: "#3f6f52", header: "#264734", background: "#f3f7f1", surface: "#ffffff" },
+  { accent: "#545f72", header: "#303744", background: "#f4f5f7", surface: "#ffffff" },
+];
 
 const defaultState = {
   settings: {
@@ -9,6 +24,7 @@ const defaultState = {
     interestApy: 2.5,
     autoPost: false,
     lastAutoPostMonth: "",
+    theme: { ...DEFAULT_THEME },
   },
   pots: [
     { id: crypto.randomUUID(), name: "Emergency", balance: 2500, allocation: 35, target: 8000, color: "#23695b" },
@@ -46,11 +62,17 @@ const els = {
   historyType: document.querySelector("#historyType"),
   clearFilters: document.querySelector("#clearFilters"),
   settingsForm: document.querySelector("#settingsForm"),
+  appearanceForm: document.querySelector("#appearanceForm"),
   settingAmount: document.querySelector("#settingAmount"),
   settingDay: document.querySelector("#settingDay"),
   settingApy: document.querySelector("#settingApy"),
   settingCurrency: document.querySelector("#settingCurrency"),
   settingAutoPost: document.querySelector("#settingAutoPost"),
+  themeAccent: document.querySelector("#themeAccent"),
+  themeHeader: document.querySelector("#themeHeader"),
+  themeBackground: document.querySelector("#themeBackground"),
+  themeSurface: document.querySelector("#themeSurface"),
+  themeSwatches: document.querySelector("#themeSwatches"),
   potForm: document.querySelector("#potForm"),
   potId: document.querySelector("#potId"),
   potName: document.querySelector("#potName"),
@@ -60,6 +82,8 @@ const els = {
   potColor: document.querySelector("#potColor"),
   resetPotForm: document.querySelector("#resetPotForm"),
   deletePot: document.querySelector("#deletePot"),
+  resetAllData: document.querySelector("#resetAllData"),
+  potSwatches: document.querySelector("#potSwatches"),
   editorList: document.querySelector("#editorList"),
   exportData: document.querySelector("#exportData"),
   importData: document.querySelector("#importData"),
@@ -70,8 +94,10 @@ function loadState() {
   if (!raw) return structuredClone(defaultState);
   try {
     const parsed = JSON.parse(raw);
+    const settings = { ...defaultState.settings, ...parsed.settings };
+    settings.theme = { ...DEFAULT_THEME, ...parsed.settings?.theme };
     return {
-      settings: { ...defaultState.settings, ...parsed.settings },
+      settings,
       pots: Array.isArray(parsed.pots) ? parsed.pots : [],
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
     };
@@ -82,6 +108,17 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function applyTheme() {
+  const theme = { ...DEFAULT_THEME, ...state.settings.theme };
+  const root = document.documentElement;
+  root.style.setProperty("--accent", theme.accent);
+  root.style.setProperty("--accent-dark", theme.header);
+  root.style.setProperty("--header", theme.header);
+  root.style.setProperty("--bg", theme.background);
+  root.style.setProperty("--surface", theme.surface);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.background);
 }
 
 function money(value) {
@@ -180,12 +217,14 @@ function autoPostIfNeeded() {
 }
 
 function render() {
+  applyTheme();
   renderSummary();
   renderPots();
   renderSelectors();
   renderTransactions();
   renderSettings();
   renderEditorList();
+  renderSwatches();
 }
 
 function renderSummary() {
@@ -298,7 +337,47 @@ function renderSettings() {
   els.settingApy.value = state.settings.interestApy;
   els.settingCurrency.value = state.settings.currency;
   els.settingAutoPost.checked = Boolean(state.settings.autoPost);
+  const theme = { ...DEFAULT_THEME, ...state.settings.theme };
+  els.themeAccent.value = theme.accent;
+  els.themeHeader.value = theme.header;
+  els.themeBackground.value = theme.background;
+  els.themeSurface.value = theme.surface;
   if (!els.txDate.value) els.txDate.value = todayISO();
+}
+
+function renderSwatches() {
+  els.potSwatches.innerHTML = "";
+  POT_COLOR_PRESETS.forEach((color) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `swatch-button${els.potColor.value === color ? " active" : ""}`;
+    button.title = color;
+    button.style.setProperty("--swatch", color);
+    button.addEventListener("click", () => {
+      els.potColor.value = color;
+      renderSwatches();
+    });
+    els.potSwatches.appendChild(button);
+  });
+
+  els.themeSwatches.innerHTML = "";
+  THEME_PRESETS.forEach((theme, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "swatch-button";
+    button.title = `Theme ${index + 1}`;
+    button.style.setProperty("--swatch", theme.accent);
+    button.addEventListener("click", () => {
+      els.themeAccent.value = theme.accent;
+      els.themeHeader.value = theme.header;
+      els.themeBackground.value = theme.background;
+      els.themeSurface.value = theme.surface;
+      state.settings.theme = { ...theme };
+      saveState();
+      render();
+    });
+    els.themeSwatches.appendChild(button);
+  });
 }
 
 function renderEditorList() {
@@ -416,6 +495,18 @@ els.settingsForm.addEventListener("submit", (event) => {
   render();
 });
 
+els.appearanceForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  state.settings.theme = {
+    accent: els.themeAccent.value,
+    header: els.themeHeader.value,
+    background: els.themeBackground.value,
+    surface: els.themeSurface.value,
+  };
+  saveState();
+  render();
+});
+
 els.potForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const existing = state.pots.find((pot) => pot.id === els.potId.value);
@@ -445,6 +536,7 @@ els.potForm.addEventListener("submit", (event) => {
 });
 
 els.resetPotForm.addEventListener("click", resetPotForm);
+els.potColor.addEventListener("input", renderSwatches);
 els.deletePot.addEventListener("click", () => {
   const pot = state.pots.find((item) => item.id === els.potId.value);
   if (!pot) return;
@@ -461,6 +553,15 @@ els.deletePot.addEventListener("click", () => {
   resetPotForm();
   saveState();
   render();
+});
+els.resetAllData.addEventListener("click", () => {
+  if (!confirm("Reset everything? This clears pots, settings, and transaction history on this device.")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  state = structuredClone(defaultState);
+  resetPotForm();
+  saveState();
+  render();
+  switchView("overview");
 });
 els.historyPot.addEventListener("change", renderTransactions);
 els.historyType.addEventListener("change", renderTransactions);
@@ -486,7 +587,7 @@ els.importData.addEventListener("change", async (event) => {
   const imported = JSON.parse(await file.text());
   if (!Array.isArray(imported.pots) || !imported.settings) return;
   state = {
-    settings: { ...defaultState.settings, ...imported.settings },
+    settings: { ...defaultState.settings, ...imported.settings, theme: { ...DEFAULT_THEME, ...imported.settings.theme } },
     pots: imported.pots,
     transactions: Array.isArray(imported.transactions) ? imported.transactions : [],
   };
