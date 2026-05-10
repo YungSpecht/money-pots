@@ -1,5 +1,7 @@
 const STORAGE_KEY = "money-pots-v1";
+const UNALLOCATED_ID = "__unallocated__";
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
 const DEFAULT_THEME = {
   accent: "#45c6a3",
   header: "#12362f",
@@ -24,9 +26,11 @@ const defaultState = {
     interestApy: "",
     autoPost: false,
     lastAutoPostMonth: "",
+    splits: [],
     theme: { ...DEFAULT_THEME },
   },
   pots: [],
+  unallocatedBalance: 0,
   transactions: [],
 };
 
@@ -44,6 +48,7 @@ const els = {
   scheduleHint: document.querySelector("#scheduleHint"),
   potsGrid: document.querySelector("#potsGrid"),
   postTransfer: document.querySelector("#postTransfer"),
+  postInterest: document.querySelector("#postInterest"),
   txType: document.querySelector("#txType"),
   txPot: document.querySelector("#txPot"),
   txToPot: document.querySelector("#txToPot"),
@@ -57,6 +62,9 @@ const els = {
   historyType: document.querySelector("#historyType"),
   clearFilters: document.querySelector("#clearFilters"),
   settingsForm: document.querySelector("#settingsForm"),
+  addSplit: document.querySelector("#addSplit"),
+  splitList: document.querySelector("#splitList"),
+  splitValidation: document.querySelector("#splitValidation"),
   appearanceForm: document.querySelector("#appearanceForm"),
   settingAmount: document.querySelector("#settingAmount"),
   settingDay: document.querySelector("#settingDay"),
@@ -72,7 +80,6 @@ const els = {
   potId: document.querySelector("#potId"),
   potName: document.querySelector("#potName"),
   potBalance: document.querySelector("#potBalance"),
-  potAllocation: document.querySelector("#potAllocation"),
   potTarget: document.querySelector("#potTarget"),
   potColor: document.querySelector("#potColor"),
   resetPotForm: document.querySelector("#resetPotForm"),
@@ -91,14 +98,50 @@ function loadState() {
     const parsed = JSON.parse(raw);
     const settings = { ...defaultState.settings, ...parsed.settings };
     settings.theme = { ...DEFAULT_THEME, ...parsed.settings?.theme };
+    const pots = Array.isArray(parsed.pots) ? parsed.pots.map(normalizePot) : [];
+    settings.splits = Array.isArray(parsed.settings?.splits) ? parsed.settings.splits.map(normalizeSplit) : migrateSplits(parsed, pots);
     return {
       settings,
-      pots: Array.isArray(parsed.pots) ? parsed.pots : [],
+      pots,
+      unallocatedBalance: roundMoney(parsed.unallocatedBalance || 0),
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
     };
   } catch {
     return structuredClone(defaultState);
   }
+}
+
+function normalizePot(pot) {
+  return {
+    id: pot.id || crypto.randomUUID(),
+    name: pot.name || "Untitled",
+    balance: roundMoney(pot.balance || 0),
+    target: roundMoney(pot.target || 0),
+    color: pot.color || DEFAULT_THEME.accent,
+  };
+}
+
+function normalizeSplit(split) {
+  return {
+    id: split.id || crypto.randomUUID(),
+    potId: split.potId || "",
+    amount: roundMoney(split.amount || 0),
+  };
+}
+
+function migrateSplits(parsed, pots) {
+  const amount = roundMoney(parsed.settings?.monthlyTransfer || 0);
+  const totalAllocation = pots.reduce((sum, pot) => sum + parseNumber(pot.allocation || 0), 0);
+  if (!amount || !totalAllocation) return [];
+  let used = 0;
+  return pots
+    .filter((pot) => parseNumber(pot.allocation || 0) > 0)
+    .map((pot, index, eligible) => {
+      const isLast = index === eligible.length - 1;
+      const splitAmount = isLast ? roundMoney(amount - used) : roundMoney(amount * (parseNumber(pot.allocation) / totalAllocation));
+      used += splitAmount;
+      return { id: crypto.randomUUID(), potId: pot.id, amount: splitAmount };
+    });
 }
 
 function saveState() {
@@ -128,16 +171,73 @@ function parseNumber(value) {
   return Number(String(value || "0").trim().replace(/\s/g, "").replace(",", ".")) || 0;
 }
 
-function percent(value) {
-  return `${Number(value || 0).toFixed(1).replace(".0", "")}%`;
+function roundMoney(value) {
+  return Math.round(parseNumber(value) * 100) / 100;
+}
+
+function regularPots() {
+  return state.pots;
+}
+
+function unallocatedPot() {
+  return {
+    id: UNALLOCATED_ID,
+    name: "Unallocated",
+    balance: roundMoney(state.unallocatedBalance || 0),
+    target: 0,
+    color: "#98a2b3",
+    system: true,
+  };
+}
+
+function visiblePots() {
+  const pots = [...regularPots()];
+  if (Math.abs(Number(state.unallocatedBalance || 0)) > 0.009) pots.push(unallocatedPot());
+  return pots;
+}
+
+function getPot(id) {
+  return id === UNALLOCATED_ID ? unallocatedPot() : state.pots.find((pot) => pot.id === id);
+}
+
+function updatePotBalance(id, amountDelta) {
+  if (id === UNALLOCATED_ID) {
+    state.unallocatedBalance = roundMoney(Number(state.unallocatedBalance || 0) + amountDelta);
+    return;
+  }
+  const pot = state.pots.find((item) => item.id === id);
+  if (pot) pot.balance = roundMoney(Number(pot.balance || 0) + amountDelta);
+}
+
+function setPotBalance(id, amount) {
+  if (id === UNALLOCATED_ID) {
+    state.unallocatedBalance = roundMoney(amount);
+    return;
+  }
+  const pot = state.pots.find((item) => item.id === id);
+  if (pot) pot.balance = roundMoney(amount);
 }
 
 function totalBalance() {
-  return state.pots.reduce((sum, pot) => sum + Number(pot.balance || 0), 0);
+  return visiblePots().reduce((sum, pot) => sum + Number(pot.balance || 0), 0);
 }
 
-function allocationTotal() {
-  return state.pots.reduce((sum, pot) => sum + Number(pot.allocation || 0), 0);
+function scheduledTotal() {
+  return state.settings.splits.reduce((sum, split) => sum + Number(split.amount || 0), 0);
+}
+
+function monthlyInterestEstimate() {
+  return totalBalance() * (Number(state.settings.interestApy || 0) / 100 / 12);
+}
+
+function splitDifference() {
+  return roundMoney(Number(state.settings.monthlyTransfer || 0) - scheduledTotal());
+}
+
+function scheduleIsValid() {
+  if (!state.settings.monthlyTransfer || !state.settings.arrivalDay) return false;
+  if (!state.settings.splits.length) return false;
+  return Math.abs(splitDifference()) < 0.01 && state.settings.splits.every((split) => split.potId && Number(split.amount || 0) > 0);
 }
 
 function nextTransferDate() {
@@ -159,15 +259,15 @@ function monthKey(date) {
 }
 
 function transferDue() {
-  if (!state.settings.arrivalDay || !state.settings.monthlyTransfer) return false;
+  if (!scheduleIsValid()) return false;
   const now = startOfToday();
   const scheduled = new Date(now.getFullYear(), now.getMonth(), Number(state.settings.arrivalDay || 1));
   return scheduled <= now && state.settings.lastAutoPostMonth !== monthKey(now);
 }
 
 function addTransaction(transaction) {
-  const pot = state.pots.find((item) => item.id === transaction.potId);
-  const toPot = state.pots.find((item) => item.id === transaction.toPotId);
+  const pot = getPot(transaction.potId);
+  const toPot = getPot(transaction.toPotId);
   state.transactions.unshift({
     id: crypto.randomUUID(),
     date: todayISO(),
@@ -179,34 +279,55 @@ function addTransaction(transaction) {
   });
 }
 
-function roundMoney(value) {
-  return Math.round(parseNumber(value) * 100) / 100;
+function addToUnallocated(amount, date, note, type = "unallocated") {
+  const rounded = roundMoney(amount);
+  if (rounded <= 0) return;
+  state.unallocatedBalance = roundMoney(Number(state.unallocatedBalance || 0) + rounded);
+  addTransaction({ type, potId: UNALLOCATED_ID, amount: rounded, date, note });
 }
 
 function postMonthlySplit(manual = true) {
-  const amount = Number(state.settings.monthlyTransfer || 0);
-  const total = allocationTotal();
-  if (!amount || !state.pots.length || total <= 0) return false;
-
+  if (!scheduleIsValid()) return false;
   const transferDate = todayISO();
-  let distributed = 0;
-  state.pots.forEach((pot, index) => {
-    const isLast = index === state.pots.length - 1;
-    const share = isLast ? roundMoney(amount - distributed) : roundMoney(amount * (Number(pot.allocation || 0) / total));
-    distributed += share;
-    pot.balance = roundMoney(Number(pot.balance || 0) + share);
-    addTransaction({
-      type: "scheduled",
-      potId: pot.id,
-      date: transferDate,
-      amount: share,
-      note: manual ? "Manual monthly split" : "Automatic monthly split",
-    });
+
+  state.settings.splits.forEach((split) => {
+    const pot = state.pots.find((item) => item.id === split.potId);
+    const amount = roundMoney(split.amount);
+    if (!pot) {
+      addToUnallocated(amount, transferDate, "Missing pot in monthly split");
+      return;
+    }
+
+    const target = Number(pot.target || 0);
+    const remainingToTarget = target > 0 ? Math.max(0, roundMoney(target - Number(pot.balance || 0))) : amount;
+    const deposit = target > 0 ? Math.min(amount, remainingToTarget) : amount;
+    const overflow = roundMoney(amount - deposit);
+
+    if (deposit > 0) {
+      pot.balance = roundMoney(Number(pot.balance || 0) + deposit);
+      addTransaction({
+        type: "scheduled",
+        potId: pot.id,
+        date: transferDate,
+        amount: deposit,
+        note: manual ? "Manual monthly split" : "Automatic monthly split",
+      });
+    }
+    if (overflow > 0) addToUnallocated(overflow, transferDate, `Overflow from ${pot.name}`);
   });
+
   state.settings.lastAutoPostMonth = monthKey(new Date());
   saveState();
   render();
   return true;
+}
+
+function postEstimatedInterest() {
+  const amount = roundMoney(monthlyInterestEstimate());
+  if (amount <= 0) return;
+  addToUnallocated(amount, todayISO(), "Estimated monthly interest", "interest");
+  saveState();
+  render();
 }
 
 function autoPostIfNeeded() {
@@ -221,44 +342,51 @@ function render() {
   renderTransactions();
   renderSettings();
   renderEditorList();
+  renderSplitRows();
   renderSwatches();
 }
 
 function renderSummary() {
-  const total = totalBalance();
-  const allocation = allocationTotal();
-  const monthlyInterest = total * (Number(state.settings.interestApy || 0) / 100 / 12);
   const nextTransfer = nextTransferDate();
-  els.totalBalance.textContent = money(total);
-  els.potCount.textContent = `${state.pots.length} ${state.pots.length === 1 ? "pot" : "pots"}`;
+  const difference = splitDifference();
+  const validSchedule = scheduleIsValid();
+  const regularPotCount = state.pots.length;
+  els.totalBalance.textContent = money(totalBalance());
+  els.potCount.textContent = `${regularPotCount} ${regularPotCount === 1 ? "pot" : "pots"}${Math.abs(Number(state.unallocatedBalance || 0)) > 0.009 ? ` + ${money(state.unallocatedBalance)} unallocated` : ""}`;
   els.monthlyAmount.textContent = state.settings.monthlyTransfer === "" ? "Not set" : money(state.settings.monthlyTransfer);
   els.nextTransfer.textContent = nextTransfer ? `Next on ${nextTransfer.toLocaleDateString()}` : "No schedule";
-  els.allocationTotal.textContent = percent(allocation);
-  els.allocationStatus.textContent = allocation > 0 ? "Split uses relative shares" : "Needs setup";
-  els.monthlyInterest.textContent = money(monthlyInterest);
+  els.allocationTotal.textContent = money(scheduledTotal());
+  els.allocationStatus.textContent = !state.settings.monthlyTransfer
+    ? "Needs transfer amount"
+    : validSchedule
+      ? "Balanced"
+      : `${money(Math.abs(difference))} ${difference > 0 ? "unassigned" : "over"}`;
+  els.monthlyInterest.textContent = money(monthlyInterestEstimate());
   els.interestApy.textContent = state.settings.interestApy === "" ? "No APY" : `${Number(state.settings.interestApy || 0).toFixed(2)}% APY`;
 
+  els.postTransfer.disabled = !validSchedule;
+  els.postInterest.disabled = monthlyInterestEstimate() <= 0;
   if (!state.settings.monthlyTransfer || !state.settings.arrivalDay) {
-    els.scheduleHint.textContent = "Add a monthly transfer in Settings.";
-    els.postTransfer.disabled = true;
+    els.scheduleHint.textContent = "Add a transfer amount, date, and destinations in Settings.";
+  } else if (!validSchedule) {
+    els.scheduleHint.textContent = "Monthly split needs to match the transfer amount.";
   } else if (transferDue()) {
     els.scheduleHint.textContent = "This month's split is due.";
-    els.postTransfer.disabled = false;
   } else {
     els.scheduleHint.textContent = `Next split posts on ${nextTransfer.toLocaleDateString()}.`;
-    els.postTransfer.disabled = false;
   }
 }
 
 function renderPots() {
   const template = document.querySelector("#potCardTemplate");
+  const pots = visiblePots();
   els.potsGrid.innerHTML = "";
-  if (!state.pots.length) {
+  if (!pots.length) {
     els.potsGrid.innerHTML = `<div class="empty-state">Create your first pot in Settings.</div>`;
     return;
   }
 
-  state.pots.forEach((pot) => {
+  pots.forEach((pot) => {
     const node = template.content.firstElementChild.cloneNode(true);
     const target = Number(pot.target || 0);
     const progress = target > 0 ? Math.min(100, (Number(pot.balance || 0) / target) * 100) : 100;
@@ -267,21 +395,80 @@ function renderPots() {
     node.querySelector(".pot-balance").textContent = money(pot.balance);
     node.querySelector(".progress-fill").style.width = `${progress}%`;
     node.querySelector(".progress-fill").style.background = pot.color;
-    node.querySelector(".pot-allocation").textContent = `${percent(pot.allocation)} allocation`;
-    node.querySelector(".pot-target").textContent = target > 0 ? `${money(target)} target` : "No target";
-    node.querySelector(".edit-pot").addEventListener("click", () => {
-      switchView("settings");
-      fillPotForm(pot.id);
-    });
+    node.querySelector(".pot-status").textContent = pot.system ? "Overflow and interest" : target > 0 ? `${money(Math.max(0, target - pot.balance))} to target` : "No target";
+    node.querySelector(".pot-target").textContent = target > 0 ? `${money(target)} target` : "";
+    const editButton = node.querySelector(".edit-pot");
+    if (pot.system) {
+      editButton.hidden = true;
+    } else {
+      editButton.addEventListener("click", () => {
+        switchView("settings");
+        fillPotForm(pot.id);
+      });
+    }
     els.potsGrid.appendChild(node);
   });
 }
 
+function potOptions(selected = "", includeUnallocated = false) {
+  const pots = includeUnallocated ? [...state.pots, unallocatedPot()] : state.pots;
+  return pots.map((pot) => `<option value="${pot.id}"${pot.id === selected ? " selected" : ""}>${escapeHtml(pot.name)}</option>`).join("");
+}
+
 function renderSelectors() {
-  const potOptions = state.pots.map((pot) => `<option value="${pot.id}">${escapeHtml(pot.name)}</option>`).join("");
-  els.txPot.innerHTML = potOptions;
-  els.txToPot.innerHTML = potOptions;
-  els.historyPot.innerHTML = `<option value="all">All pots</option>${potOptions}`;
+  const optionsWithUnallocated = potOptions("", true);
+  els.txPot.innerHTML = optionsWithUnallocated;
+  els.txToPot.innerHTML = optionsWithUnallocated;
+  els.historyPot.innerHTML = `<option value="all">All pots</option>${optionsWithUnallocated}`;
+}
+
+function renderSplitRows() {
+  els.splitList.innerHTML = "";
+  if (!state.pots.length) {
+    els.splitList.innerHTML = `<div class="empty-state">Create pots before defining transfer destinations.</div>`;
+  } else {
+    state.settings.splits.forEach((split) => {
+      const row = document.createElement("div");
+      row.className = "split-row";
+      row.dataset.id = split.id;
+      row.innerHTML = `
+        <select class="split-pot" aria-label="Destination pot">${potOptions(split.potId)}</select>
+        <input class="split-amount" aria-label="Destination amount" type="text" inputmode="decimal" autocomplete="off" value="${split.amount || ""}" />
+        <button class="icon-button small remove-split" type="button" title="Remove destination" aria-label="Remove destination">x</button>
+      `;
+      els.splitList.appendChild(row);
+    });
+  }
+  renderSplitValidation();
+}
+
+function renderSplitValidation() {
+  const transfer = Number(state.settings.monthlyTransfer || 0);
+  const total = scheduledTotal();
+  const diff = roundMoney(transfer - total);
+  els.splitValidation.className = "validation-line";
+  if (!transfer) {
+    els.splitValidation.textContent = "Enter a transfer amount to validate destinations.";
+  } else if (!state.settings.splits.length) {
+    els.splitValidation.textContent = "Add at least one destination.";
+    els.splitValidation.classList.add("invalid");
+  } else if (Math.abs(diff) < 0.01) {
+    els.splitValidation.textContent = `Destinations match ${money(transfer)}.`;
+    els.splitValidation.classList.add("valid");
+  } else {
+    els.splitValidation.textContent = `${money(Math.abs(diff))} ${diff > 0 ? "still unassigned" : "over the transfer amount"}.`;
+    els.splitValidation.classList.add("invalid");
+  }
+}
+
+function readSplitRows() {
+  return [...els.splitList.querySelectorAll(".split-row")]
+    .map((row) => ({
+      id: row.dataset.id || crypto.randomUUID(),
+      potId: row.querySelector(".split-pot").value,
+      amount: roundMoney(row.querySelector(".split-amount").value),
+    }))
+    .filter((split) => split.potId);
 }
 
 function renderTransactions() {
@@ -300,8 +487,6 @@ function renderTransactions() {
   }
 
   filtered.slice(0, 120).forEach((tx) => {
-    const pot = state.pots.find((item) => item.id === tx.potId);
-    const toPot = state.pots.find((item) => item.id === tx.toPotId);
     const signed = tx.type === "withdrawal" || tx.type === "deleted" ? -Math.abs(tx.amount) : tx.amount;
     const amountClass = tx.type === "transfer" ? "amount-neutral" : signed < 0 ? "amount-negative" : "amount-positive";
     const prefix = tx.type === "transfer" ? "" : signed < 0 ? "-" : "+";
@@ -309,7 +494,7 @@ function renderTransactions() {
     row.className = "transaction-row";
     row.innerHTML = `
       <div>
-        <strong>${transactionTitle(tx, pot, toPot)}</strong>
+        <strong>${transactionTitle(tx)}</strong>
         <span>${new Date(tx.date).toLocaleDateString()}${tx.note ? ` - ${escapeHtml(tx.note)}` : ""}</span>
       </div>
       <div class="${amountClass}">${prefix}${money(Math.abs(signed))}</div>
@@ -318,12 +503,14 @@ function renderTransactions() {
   });
 }
 
-function transactionTitle(tx, pot, toPot) {
-  const potName = pot?.name || tx.potName || "Deleted pot";
-  const toPotName = toPot?.name || tx.toPotName || "Deleted pot";
+function transactionTitle(tx) {
+  const potName = getPot(tx.potId)?.name || tx.potName || "Deleted pot";
+  const toPotName = getPot(tx.toPotId)?.name || tx.toPotName || "Deleted pot";
   if (tx.type === "transfer") return `${potName} to ${toPotName}`;
   const labels = {
     scheduled: "Monthly split",
+    interest: "Interest",
+    unallocated: "Unallocated",
     addition: "Addition",
     withdrawal: "Withdrawal",
     set: "Balance edit",
@@ -389,7 +576,7 @@ function renderEditorList() {
     row.innerHTML = `
       <div>
         <strong>${escapeHtml(pot.name)}</strong>
-        <span>${money(pot.balance)} - ${percent(pot.allocation)} - ${pot.target ? `${money(pot.target)} target` : "no target"}</span>
+        <span>${money(pot.balance)} - ${pot.target ? `${money(pot.target)} target` : "no target"}</span>
       </div>
       <button class="secondary-action" type="button">Edit</button>
     `;
@@ -404,9 +591,8 @@ function fillPotForm(id) {
   els.potId.value = pot.id;
   els.potName.value = pot.name;
   els.potBalance.value = pot.balance;
-  els.potAllocation.value = pot.allocation;
   els.potTarget.value = pot.target || "";
-  els.potColor.value = pot.color || "#23695b";
+  els.potColor.value = pot.color || DEFAULT_THEME.accent;
   els.deletePot.hidden = false;
   els.potName.focus();
 }
@@ -415,7 +601,6 @@ function resetPotForm() {
   els.potId.value = "";
   els.potName.value = "";
   els.potBalance.value = "";
-  els.potAllocation.value = "";
   els.potTarget.value = "";
   els.potColor.value = DEFAULT_THEME.accent;
   els.deletePot.hidden = true;
@@ -441,9 +626,8 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.view));
 });
 
-els.postTransfer.addEventListener("click", () => {
-  postMonthlySplit(true);
-});
+els.postTransfer.addEventListener("click", () => postMonthlySplit(true));
+els.postInterest.addEventListener("click", postEstimatedInterest);
 
 els.txType.addEventListener("change", () => {
   els.toPotWrap.classList.toggle("hidden", els.txType.value !== "transfer");
@@ -453,29 +637,29 @@ els.transactionForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const type = els.txType.value;
   const amount = roundMoney(els.txAmount.value);
-  const pot = state.pots.find((item) => item.id === els.txPot.value);
-  const toPot = state.pots.find((item) => item.id === els.txToPot.value);
+  const pot = getPot(els.txPot.value);
+  const toPot = getPot(els.txToPot.value);
   if (!pot || amount < 0) return;
 
   if (type === "addition") {
-    pot.balance = roundMoney(Number(pot.balance || 0) + amount);
+    updatePotBalance(pot.id, amount);
     addTransaction({ type, potId: pot.id, amount, date: els.txDate.value, note: els.txNote.value });
   }
 
   if (type === "withdrawal") {
-    pot.balance = roundMoney(Number(pot.balance || 0) - amount);
+    updatePotBalance(pot.id, -amount);
     addTransaction({ type, potId: pot.id, amount, date: els.txDate.value, note: els.txNote.value });
   }
 
   if (type === "set") {
     const previous = Number(pot.balance || 0);
-    pot.balance = amount;
+    setPotBalance(pot.id, amount);
     addTransaction({ type, potId: pot.id, amount: amount - previous, date: els.txDate.value, note: els.txNote.value || "Manual balance edit" });
   }
 
   if (type === "transfer" && toPot && toPot.id !== pot.id) {
-    pot.balance = roundMoney(Number(pot.balance || 0) - amount);
-    toPot.balance = roundMoney(Number(toPot.balance || 0) + amount);
+    updatePotBalance(pot.id, -amount);
+    updatePotBalance(toPot.id, amount);
     addTransaction({ type, potId: pot.id, toPotId: toPot.id, amount, date: els.txDate.value, note: els.txNote.value });
   }
 
@@ -485,6 +669,35 @@ els.transactionForm.addEventListener("submit", (event) => {
   render();
 });
 
+els.addSplit.addEventListener("click", () => {
+  if (!state.pots.length) return;
+  state.settings.splits.push({ id: crypto.randomUUID(), potId: state.pots[0].id, amount: 0 });
+  renderSplitRows();
+});
+
+els.splitList.addEventListener("input", () => {
+  state.settings.splits = readSplitRows();
+  renderSplitValidation();
+});
+
+els.splitList.addEventListener("change", () => {
+  state.settings.splits = readSplitRows();
+  renderSplitValidation();
+});
+
+els.splitList.addEventListener("click", (event) => {
+  const button = event.target.closest(".remove-split");
+  if (!button) return;
+  const row = button.closest(".split-row");
+  state.settings.splits = state.settings.splits.filter((split) => split.id !== row.dataset.id);
+  renderSplitRows();
+});
+
+els.settingAmount.addEventListener("input", () => {
+  state.settings.monthlyTransfer = els.settingAmount.value.trim() === "" ? "" : roundMoney(els.settingAmount.value);
+  renderSplitValidation();
+});
+
 els.settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();
   state.settings.monthlyTransfer = els.settingAmount.value.trim() === "" ? "" : roundMoney(els.settingAmount.value);
@@ -492,6 +705,11 @@ els.settingsForm.addEventListener("submit", (event) => {
   state.settings.interestApy = els.settingApy.value.trim() === "" ? "" : parseNumber(els.settingApy.value);
   state.settings.currency = els.settingCurrency.value;
   state.settings.autoPost = els.settingAutoPost.checked;
+  state.settings.splits = readSplitRows();
+  if (state.settings.monthlyTransfer && !scheduleIsValid()) {
+    render();
+    return;
+  }
   saveState();
   render();
 });
@@ -514,7 +732,6 @@ els.potForm.addEventListener("submit", (event) => {
   const payload = {
     name: els.potName.value.trim(),
     balance: roundMoney(els.potBalance.value),
-    allocation: parseNumber(els.potAllocation.value || 0),
     target: roundMoney(els.potTarget.value || 0),
     color: els.potColor.value,
   };
@@ -538,11 +755,14 @@ els.potForm.addEventListener("submit", (event) => {
 
 els.resetPotForm.addEventListener("click", resetPotForm);
 els.potColor.addEventListener("input", renderSwatches);
+
 els.deletePot.addEventListener("click", () => {
   const pot = state.pots.find((item) => item.id === els.potId.value);
   if (!pot) return;
-  if (!confirm(`Delete "${pot.name}"? Transaction history will stay available.`)) return;
+  if (!confirm(`Delete "${pot.name}"? Its balance will move to Unallocated and history will stay available.`)) return;
   state.pots = state.pots.filter((item) => item.id !== pot.id);
+  state.settings.splits = state.settings.splits.filter((split) => split.potId !== pot.id);
+  if (Number(pot.balance || 0) > 0) addToUnallocated(pot.balance, todayISO(), `Balance from deleted pot ${pot.name}`);
   addTransaction({
     type: "deleted",
     potId: pot.id,
@@ -555,6 +775,7 @@ els.deletePot.addEventListener("click", () => {
   saveState();
   render();
 });
+
 els.resetAllData.addEventListener("click", () => {
   if (!confirm("Reset everything? This clears pots, settings, and transaction history on this device.")) return;
   localStorage.removeItem(STORAGE_KEY);
@@ -564,6 +785,7 @@ els.resetAllData.addEventListener("click", () => {
   render();
   switchView("overview");
 });
+
 els.historyPot.addEventListener("change", renderTransactions);
 els.historyType.addEventListener("change", renderTransactions);
 els.clearFilters.addEventListener("click", () => {
@@ -588,8 +810,14 @@ els.importData.addEventListener("change", async (event) => {
   const imported = JSON.parse(await file.text());
   if (!Array.isArray(imported.pots) || !imported.settings) return;
   state = {
-    settings: { ...defaultState.settings, ...imported.settings, theme: { ...DEFAULT_THEME, ...imported.settings.theme } },
-    pots: imported.pots,
+    settings: {
+      ...defaultState.settings,
+      ...imported.settings,
+      splits: Array.isArray(imported.settings.splits) ? imported.settings.splits.map(normalizeSplit) : [],
+      theme: { ...DEFAULT_THEME, ...imported.settings.theme },
+    },
+    pots: imported.pots.map(normalizePot),
+    unallocatedBalance: roundMoney(imported.unallocatedBalance || 0),
     transactions: Array.isArray(imported.transactions) ? imported.transactions : [],
   };
   saveState();

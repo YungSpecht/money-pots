@@ -43,8 +43,8 @@
             <span id="nextTransfer">No schedule</span>
           </div>
           <div class="summary-panel">
-            <p>Allocation</p>
-            <strong id="allocationTotal">0%</strong>
+            <p>Scheduled split</p>
+            <strong id="allocationTotal">&euro;0.00</strong>
             <span id="allocationStatus">Needs setup</span>
           </div>
           <div class="summary-panel">
@@ -66,7 +66,10 @@
               <h2>Pots</h2>
               <p id="scheduleHint">Scheduled split is ready.</p>
             </div>
-            <button class="primary-action" id="postTransfer">Post monthly split</button>
+            <div class="button-row">
+              <button class="primary-action" id="postTransfer">Post monthly split</button>
+              <button class="secondary-action" id="postInterest">Post estimated interest</button>
+            </div>
           </div>
           <div class="pots-grid" id="potsGrid"></div>
         </section>
@@ -119,6 +122,8 @@
                 <select id="historyType">
                   <option value="all">All types</option>
                   <option value="scheduled">Scheduled</option>
+                  <option value="interest">Interest</option>
+                  <option value="unallocated">Unallocated</option>
                   <option value="addition">Additions</option>
                   <option value="withdrawal">Withdrawals</option>
                   <option value="set">Balance edits</option>
@@ -142,7 +147,7 @@
                 </label>
                 <label>
                   Arrival day
-                  <input id="settingDay" type="number" inputmode="numeric" min="1" max="28" step="1" />
+                  <input id="settingDay" type="text" inputmode="numeric" autocomplete="off" />
                 </label>
                 <label>
                   Interest APY
@@ -161,6 +166,14 @@
                   <input id="settingAutoPost" type="checkbox" />
                   <span>Post due monthly splits automatically when the app opens</span>
                 </label>
+                <div class="split-editor full">
+                  <div class="section-heading compact">
+                    <h3>Transfer destinations</h3>
+                    <button class="secondary-action" type="button" id="addSplit">Add destination</button>
+                  </div>
+                  <div class="split-list" id="splitList"></div>
+                  <p class="validation-line" id="splitValidation">Create pots first, then add destinations.</p>
+                </div>
                 <button class="primary-action full" type="submit">Save schedule</button>
               </form>
             </section>
@@ -205,10 +218,6 @@
                   <input id="potBalance" type="text" inputmode="decimal" autocomplete="off" required />
                 </label>
                 <label>
-                  Allocation %
-                  <input id="potAllocation" type="text" inputmode="decimal" autocomplete="off" required />
-                </label>
-                <label>
                   Target
                   <input id="potTarget" type="text" inputmode="decimal" autocomplete="off" />
                 </label>
@@ -244,7 +253,7 @@
           <span class="progress-fill"></span>
         </div>
         <div class="pot-meta">
-          <span class="pot-allocation"></span>
+          <span class="pot-status"></span>
           <span class="pot-target"></span>
         </div>
       </article>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "money-pots-cache-v4";
+const CACHE_NAME = "money-pots-cache-v5";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
