@@ -1,4 +1,5 @@
 const STORAGE_KEY = "money-pots-v1";
+const BACKUP_VERSION = 2;
 const UNALLOCATED_ID = "__unallocated__";
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -91,20 +92,29 @@ function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return structuredClone(defaultState);
   try {
-    const parsed = JSON.parse(raw);
-    const settings = { ...defaultState.settings, ...parsed.settings };
-    settings.theme = { ...DEFAULT_THEME, ...parsed.settings?.theme };
-    const pots = Array.isArray(parsed.pots) ? parsed.pots.map(normalizePot) : [];
-    settings.splits = Array.isArray(parsed.settings?.splits) ? parsed.settings.splits.map(normalizeSplit) : migrateSplits(parsed, pots);
-    return {
-      settings,
-      pots,
-      unallocatedBalance: roundMoney(parsed.unallocatedBalance || 0),
-      transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
-    };
+    return hydrateState(JSON.parse(raw));
   } catch {
     return structuredClone(defaultState);
   }
+}
+
+function hydrateState(parsed, options = {}) {
+  const settings = { ...defaultState.settings, ...parsed.settings };
+  settings.theme = { ...DEFAULT_THEME, ...parsed.settings?.theme };
+  const rawPots = Array.isArray(parsed.pots) ? parsed.pots : [];
+  const pots = rawPots.map(normalizePot);
+  settings.splits = Array.isArray(parsed.settings?.splits) ? parsed.settings.splits.map(normalizeSplit) : migrateSplits(parsed, rawPots);
+
+  if (options.imported && !settings.lastAutoPostMonth && parsed.backupExportedAt) {
+    settings.lastAutoPostMonth = baselineProcessedMonthKey(new Date(parsed.backupExportedAt), settings);
+  }
+
+  return {
+    settings,
+    pots,
+    unallocatedBalance: roundMoney(parsed.unallocatedBalance || 0),
+    transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+  };
 }
 
 function normalizePot(pot) {
@@ -264,19 +274,21 @@ function addMonths(date, count) {
   return new Date(date.getFullYear(), date.getMonth() + count, date.getDate());
 }
 
-function latestDueMonthKey(now = new Date()) {
-  if (!state.settings.arrivalDay) return "";
-  const day = Number(state.settings.arrivalDay || 1);
+function latestDueMonthKey(now = new Date(), settings = state.settings) {
+  if (!settings.arrivalDay) return "";
+  const day = Number(settings.arrivalDay || 1);
   const currentMonthDue = new Date(now.getFullYear(), now.getMonth(), day);
-  const latest = startOfToday() >= currentMonthDue ? currentMonthDue : new Date(now.getFullYear(), now.getMonth() - 1, day);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const latest = today >= currentMonthDue ? currentMonthDue : new Date(now.getFullYear(), now.getMonth() - 1, day);
   return monthKey(latest);
 }
 
-function baselineProcessedMonthKey(now = new Date()) {
-  if (!state.settings.arrivalDay) return monthKey(now);
-  const day = Number(state.settings.arrivalDay || 1);
+function baselineProcessedMonthKey(now = new Date(), settings = state.settings) {
+  if (!settings.arrivalDay) return monthKey(now);
+  const day = Number(settings.arrivalDay || 1);
   const currentMonthDue = new Date(now.getFullYear(), now.getMonth(), day);
-  const baseline = startOfToday() >= currentMonthDue ? currentMonthDue : new Date(now.getFullYear(), now.getMonth() - 1, day);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const baseline = today >= currentMonthDue ? currentMonthDue : new Date(now.getFullYear(), now.getMonth() - 1, day);
   return monthKey(baseline);
 }
 
@@ -824,7 +836,12 @@ els.clearFilters.addEventListener("click", () => {
 });
 
 els.exportData.addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const backup = {
+    ...state,
+    backupVersion: BACKUP_VERSION,
+    backupExportedAt: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -838,17 +855,8 @@ els.importData.addEventListener("change", async (event) => {
   if (!file) return;
   const imported = JSON.parse(await file.text());
   if (!Array.isArray(imported.pots) || !imported.settings) return;
-  state = {
-    settings: {
-      ...defaultState.settings,
-      ...imported.settings,
-      splits: Array.isArray(imported.settings.splits) ? imported.settings.splits.map(normalizeSplit) : [],
-      theme: { ...DEFAULT_THEME, ...imported.settings.theme },
-    },
-    pots: imported.pots.map(normalizePot),
-    unallocatedBalance: roundMoney(imported.unallocatedBalance || 0),
-    transactions: Array.isArray(imported.transactions) ? imported.transactions : [],
-  };
+  state = hydrateState(imported, { imported: true });
+  processDueCycles();
   saveState();
   render();
   event.target.value = "";

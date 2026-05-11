@@ -14,6 +14,7 @@ A static private ledger for managing virtual savings pots over one Tagesgeldkont
 - Record additions, withdrawals, balance corrections, and moves between pots.
 - Filter transaction history by pot and transaction type.
 - Export and import a JSON backup.
+- Imported backups are migrated and overdue months are processed immediately.
 - Reset local app data from Settings back to a blank ledger.
 - Installable PWA metadata and offline cache for GitHub Pages hosting.
 
