@@ -7,9 +7,10 @@ A static private ledger for managing virtual savings pots over one Tagesgeldkont
 - Create, edit, target, color-code, and delete virtual money pots.
 - Configure a monthly incoming transfer and split it across pots with absolute amounts.
 - Overflow from reached targets, missing destinations, and posted interest goes to Unallocated.
+- Overdue monthly splits and estimated interest are applied automatically when the app opens.
 - Customize the app theme and individual pot colors.
 - Starts with an empty dark-mode ledger by default.
-- Post scheduled transfers manually or automatically when the app opens after the arrival date.
+- Process scheduled transfers automatically when the app opens after the arrival date.
 - Record additions, withdrawals, balance corrections, and moves between pots.
 - Filter transaction history by pot and transaction type.
 - Export and import a JSON backup.

@@ -21,10 +21,18 @@
         </div>
         <div class="topbar-actions">
           <button class="icon-button" id="exportData" title="Export backup" aria-label="Export backup">
-            <span aria-hidden="true">&#8681;</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 3v12" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M5 19h14" />
+            </svg>
           </button>
           <label class="icon-button file-button" title="Import backup" aria-label="Import backup">
-            <span aria-hidden="true">&#8679;</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 15V3" />
+              <path d="m7 8 5-5 5 5" />
+              <path d="M5 19h14" />
+            </svg>
             <input id="importData" type="file" accept="application/json" />
           </label>
         </div>
@@ -65,10 +73,6 @@
             <div>
               <h2>Pots</h2>
               <p id="scheduleHint">Scheduled split is ready.</p>
-            </div>
-            <div class="button-row">
-              <button class="primary-action" id="postTransfer">Post monthly split</button>
-              <button class="secondary-action" id="postInterest">Post estimated interest</button>
             </div>
           </div>
           <div class="pots-grid" id="potsGrid"></div>
@@ -161,10 +165,6 @@
                     <option value="GBP">GBP</option>
                     <option value="CHF">CHF</option>
                   </select>
-                </label>
-                <label class="toggle full">
-                  <input id="settingAutoPost" type="checkbox" />
-                  <span>Post due monthly splits automatically when the app opens</span>
                 </label>
                 <div class="split-editor full">
                   <div class="section-heading compact">

@@ -24,7 +24,6 @@ const defaultState = {
     monthlyTransfer: "",
     arrivalDay: "",
     interestApy: "",
-    autoPost: false,
     lastAutoPostMonth: "",
     splits: [],
     theme: { ...DEFAULT_THEME },
@@ -47,8 +46,6 @@ const els = {
   interestApy: document.querySelector("#interestApy"),
   scheduleHint: document.querySelector("#scheduleHint"),
   potsGrid: document.querySelector("#potsGrid"),
-  postTransfer: document.querySelector("#postTransfer"),
-  postInterest: document.querySelector("#postInterest"),
   txType: document.querySelector("#txType"),
   txPot: document.querySelector("#txPot"),
   txToPot: document.querySelector("#txToPot"),
@@ -70,7 +67,6 @@ const els = {
   settingDay: document.querySelector("#settingDay"),
   settingApy: document.querySelector("#settingApy"),
   settingCurrency: document.querySelector("#settingCurrency"),
-  settingAutoPost: document.querySelector("#settingAutoPost"),
   themeAccent: document.querySelector("#themeAccent"),
   themeHeader: document.querySelector("#themeHeader"),
   themeBackground: document.querySelector("#themeBackground"),
@@ -258,11 +254,47 @@ function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function transferDue() {
-  if (!scheduleIsValid()) return false;
-  const now = startOfToday();
-  const scheduled = new Date(now.getFullYear(), now.getMonth(), Number(state.settings.arrivalDay || 1));
-  return scheduled <= now && state.settings.lastAutoPostMonth !== monthKey(now);
+function dateFromMonthKey(key, day = 1) {
+  const [year, month] = String(key).split("-").map(Number);
+  if (!year || !month) return null;
+  return new Date(year, month - 1, day);
+}
+
+function addMonths(date, count) {
+  return new Date(date.getFullYear(), date.getMonth() + count, date.getDate());
+}
+
+function latestDueMonthKey(now = new Date()) {
+  if (!state.settings.arrivalDay) return "";
+  const day = Number(state.settings.arrivalDay || 1);
+  const currentMonthDue = new Date(now.getFullYear(), now.getMonth(), day);
+  const latest = startOfToday() >= currentMonthDue ? currentMonthDue : new Date(now.getFullYear(), now.getMonth() - 1, day);
+  return monthKey(latest);
+}
+
+function baselineProcessedMonthKey(now = new Date()) {
+  if (!state.settings.arrivalDay) return monthKey(now);
+  const day = Number(state.settings.arrivalDay || 1);
+  const currentMonthDue = new Date(now.getFullYear(), now.getMonth(), day);
+  const baseline = startOfToday() >= currentMonthDue ? currentMonthDue : new Date(now.getFullYear(), now.getMonth() - 1, day);
+  return monthKey(baseline);
+}
+
+function dueCycleDates(now = new Date()) {
+  if (!scheduleIsValid()) return [];
+  if (!state.settings.lastAutoPostMonth) {
+    state.settings.lastAutoPostMonth = baselineProcessedMonthKey(now);
+    saveState();
+    return [];
+  }
+  const latestKey = latestDueMonthKey(now);
+  const dates = [];
+  let cursor = addMonths(dateFromMonthKey(state.settings.lastAutoPostMonth, Number(state.settings.arrivalDay || 1)), 1);
+  while (monthKey(cursor) <= latestKey) {
+    dates.push(new Date(cursor));
+    cursor = addMonths(cursor, 1);
+  }
+  return dates;
 }
 
 function addTransaction(transaction) {
@@ -286,15 +318,15 @@ function addToUnallocated(amount, date, note, type = "unallocated") {
   addTransaction({ type, potId: UNALLOCATED_ID, amount: rounded, date, note });
 }
 
-function postMonthlySplit(manual = true) {
+function applyMonthlySplitForDate(transferDate) {
   if (!scheduleIsValid()) return false;
-  const transferDate = todayISO();
+  const transferISO = transferDate.toISOString().slice(0, 10);
 
   state.settings.splits.forEach((split) => {
     const pot = state.pots.find((item) => item.id === split.potId);
     const amount = roundMoney(split.amount);
     if (!pot) {
-      addToUnallocated(amount, transferDate, "Missing pot in monthly split");
+      addToUnallocated(amount, transferISO, "Missing pot in monthly split");
       return;
     }
 
@@ -308,30 +340,33 @@ function postMonthlySplit(manual = true) {
       addTransaction({
         type: "scheduled",
         potId: pot.id,
-        date: transferDate,
+        date: transferISO,
         amount: deposit,
-        note: manual ? "Manual monthly split" : "Automatic monthly split",
+        note: "Automatic monthly split",
       });
     }
-    if (overflow > 0) addToUnallocated(overflow, transferDate, `Overflow from ${pot.name}`);
+    if (overflow > 0) addToUnallocated(overflow, transferISO, `Overflow from ${pot.name}`);
   });
 
-  state.settings.lastAutoPostMonth = monthKey(new Date());
-  saveState();
-  render();
   return true;
 }
 
-function postEstimatedInterest() {
+function applyEstimatedInterestForDate(date) {
   const amount = roundMoney(monthlyInterestEstimate());
-  if (amount <= 0) return;
-  addToUnallocated(amount, todayISO(), "Estimated monthly interest", "interest");
-  saveState();
-  render();
+  if (amount <= 0) return false;
+  addToUnallocated(amount, date.toISOString().slice(0, 10), "Estimated monthly interest", "interest");
+  return true;
 }
 
-function autoPostIfNeeded() {
-  if (state.settings.autoPost && transferDue()) postMonthlySplit(false);
+function processDueCycles() {
+  const cycles = dueCycleDates();
+  if (!cycles.length) return;
+  cycles.forEach((date) => {
+    applyMonthlySplitForDate(date);
+    applyEstimatedInterestForDate(date);
+    state.settings.lastAutoPostMonth = monthKey(date);
+  });
+  saveState();
 }
 
 function render() {
@@ -364,16 +399,12 @@ function renderSummary() {
   els.monthlyInterest.textContent = money(monthlyInterestEstimate());
   els.interestApy.textContent = state.settings.interestApy === "" ? "No APY" : `${Number(state.settings.interestApy || 0).toFixed(2)}% APY`;
 
-  els.postTransfer.disabled = !validSchedule;
-  els.postInterest.disabled = monthlyInterestEstimate() <= 0;
   if (!state.settings.monthlyTransfer || !state.settings.arrivalDay) {
     els.scheduleHint.textContent = "Add a transfer amount, date, and destinations in Settings.";
   } else if (!validSchedule) {
     els.scheduleHint.textContent = "Monthly split needs to match the transfer amount.";
-  } else if (transferDue()) {
-    els.scheduleHint.textContent = "This month's split is due.";
   } else {
-    els.scheduleHint.textContent = `Next split posts on ${nextTransfer.toLocaleDateString()}.`;
+    els.scheduleHint.textContent = `Automatic split and interest processing. Next check: ${nextTransfer.toLocaleDateString()}.`;
   }
 }
 
@@ -524,7 +555,6 @@ function renderSettings() {
   els.settingDay.value = state.settings.arrivalDay;
   els.settingApy.value = state.settings.interestApy;
   els.settingCurrency.value = state.settings.currency;
-  els.settingAutoPost.checked = Boolean(state.settings.autoPost);
   const theme = { ...DEFAULT_THEME, ...state.settings.theme };
   els.themeAccent.value = theme.accent;
   els.themeHeader.value = theme.header;
@@ -626,9 +656,6 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.view));
 });
 
-els.postTransfer.addEventListener("click", () => postMonthlySplit(true));
-els.postInterest.addEventListener("click", postEstimatedInterest);
-
 els.txType.addEventListener("change", () => {
   els.toPotWrap.classList.toggle("hidden", els.txType.value !== "transfer");
 });
@@ -704,11 +731,13 @@ els.settingsForm.addEventListener("submit", (event) => {
   state.settings.arrivalDay = els.settingDay.value === "" ? "" : Math.min(28, Math.max(1, parseNumber(els.settingDay.value)));
   state.settings.interestApy = els.settingApy.value.trim() === "" ? "" : parseNumber(els.settingApy.value);
   state.settings.currency = els.settingCurrency.value;
-  state.settings.autoPost = els.settingAutoPost.checked;
   state.settings.splits = readSplitRows();
   if (state.settings.monthlyTransfer && !scheduleIsValid()) {
     render();
     return;
+  }
+  if (scheduleIsValid() && !state.settings.lastAutoPostMonth) {
+    state.settings.lastAutoPostMonth = baselineProcessedMonthKey();
   }
   saveState();
   render();
@@ -830,5 +859,5 @@ if ("serviceWorker" in navigator) {
 }
 
 resetPotForm();
-autoPostIfNeeded();
+processDueCycles();
 render();
