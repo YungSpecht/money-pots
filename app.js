@@ -35,6 +35,7 @@ const defaultState = {
 };
 
 let state = loadState();
+let activePotId = null;
 
 const els = {
   totalBalance: document.querySelector("#totalBalance"),
@@ -86,6 +87,11 @@ const els = {
   editorList: document.querySelector("#editorList"),
   exportData: document.querySelector("#exportData"),
   importData: document.querySelector("#importData"),
+  transactionComposer: document.querySelector("#transactionComposer"),
+  toggleTransaction: document.querySelector("#toggleTransaction"),
+  activityComposerHost: document.querySelector("#activityComposerHost"),
+  detailComposerHost: document.querySelector("#detailComposerHost"),
+  detailTransactionList: document.querySelector("#detailTransactionList"),
 };
 
 function loadState() {
@@ -391,6 +397,7 @@ function render() {
   renderEditorList();
   renderSplitRows();
   renderSwatches();
+  renderPotDetail();
 }
 
 function renderSummary() {
@@ -436,6 +443,9 @@ function renderPots() {
     node.querySelector(".color-dot").style.background = pot.color;
     node.querySelector(".pot-title h3").textContent = pot.name;
     node.querySelector(".pot-balance").textContent = money(pot.balance);
+    const openButton = node.querySelector(".pot-open");
+    openButton.setAttribute("aria-label", `Open ${pot.name}`);
+    openButton.addEventListener("click", () => openPotDetail(pot.id));
     node.querySelector(".progress-fill").style.width = `${progress}%`;
     node.querySelector(".progress-fill").style.background = pot.color;
     node.querySelector(".pot-status").textContent = pot.system ? "Overflow and interest" : target > 0 ? `${money(Math.max(0, target - pot.balance))} to target` : "No target";
@@ -459,10 +469,16 @@ function potOptions(selected = "", includeUnallocated = false) {
 }
 
 function renderSelectors() {
+  const selectedPot = els.txPot.value;
+  const selectedToPot = els.txToPot.value;
+  const selectedFilter = els.historyPot.value;
   const optionsWithUnallocated = potOptions("", true);
   els.txPot.innerHTML = optionsWithUnallocated;
   els.txToPot.innerHTML = optionsWithUnallocated;
   els.historyPot.innerHTML = `<option value="all">All pots</option>${optionsWithUnallocated}`;
+  if (getPot(selectedPot)) els.txPot.value = selectedPot;
+  if (getPot(selectedToPot)) els.txToPot.value = selectedToPot;
+  if (selectedFilter === "all" || getPot(selectedFilter)) els.historyPot.value = selectedFilter;
 }
 
 function renderSplitRows() {
@@ -517,33 +533,66 @@ function readSplitRows() {
 function renderTransactions() {
   const potFilter = els.historyPot.value || "all";
   const typeFilter = els.historyType.value || "all";
+  renderTransactionList(els.transactionList, potFilter, typeFilter);
+}
+
+function renderTransactionList(container, potFilter = "all", typeFilter = "all") {
   const filtered = state.transactions.filter((tx) => {
     const matchesPot = potFilter === "all" || tx.potId === potFilter || tx.toPotId === potFilter;
     const matchesType = typeFilter === "all" || tx.type === typeFilter;
     return matchesPot && matchesType;
-  });
+  }).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
-  els.transactionList.innerHTML = "";
+  container.innerHTML = "";
   if (!filtered.length) {
-    els.transactionList.innerHTML = `<div class="empty-state">No transactions match the current filters.</div>`;
+    container.innerHTML = `<div class="empty-state">No transactions match the current filters.</div>`;
     return;
   }
 
-  filtered.slice(0, 120).forEach((tx) => {
+  filtered.forEach((tx) => {
     const signed = tx.type === "withdrawal" || tx.type === "deleted" ? -Math.abs(tx.amount) : tx.amount;
-    const amountClass = tx.type === "transfer" ? "amount-neutral" : signed < 0 ? "amount-negative" : "amount-positive";
-    const prefix = tx.type === "transfer" ? "" : signed < 0 ? "-" : "+";
+    const contextualTransfer = tx.type === "transfer" && potFilter !== "all";
+    const displayedSigned = contextualTransfer ? (tx.potId === potFilter ? -Math.abs(tx.amount) : Math.abs(tx.amount)) : signed;
+    const neutral = tx.type === "transfer" && !contextualTransfer;
+    const amountClass = neutral ? "amount-neutral" : displayedSigned < 0 ? "amount-negative" : "amount-positive";
+    const prefix = neutral ? "" : displayedSigned < 0 ? "-" : "+";
     const row = document.createElement("article");
     row.className = "transaction-row";
     row.innerHTML = `
       <div>
-        <strong>${transactionTitle(tx)}</strong>
-        <span>${new Date(tx.date).toLocaleDateString()}${tx.note ? ` - ${escapeHtml(tx.note)}` : ""}</span>
+        <strong>${escapeHtml(transactionTitle(tx))}</strong>
+        <span>${escapeHtml(tx.date?.slice(0, 10) || "")}${tx.note ? ` - ${escapeHtml(tx.note)}` : ""}</span>
       </div>
       <div class="${amountClass}">${prefix}${money(Math.abs(signed))}</div>
     `;
-    els.transactionList.appendChild(row);
+    container.appendChild(row);
   });
+}
+
+function setComposerOpen(open) {
+  els.transactionForm.hidden = !open;
+  els.toggleTransaction.setAttribute("aria-expanded", String(open));
+  els.toggleTransaction.textContent = open ? "Cancel transaction" : "New transaction";
+}
+
+function openPotDetail(id) {
+  activePotId = id;
+  switchView("potDetail");
+  renderPotDetail();
+  window.scrollTo({ top: 0 });
+}
+
+function renderPotDetail() {
+  if (!activePotId) return;
+  const pot = getPot(activePotId);
+  if (!pot) { switchView("overview"); return; }
+  document.querySelector("#detailPotName").textContent = pot.name;
+  document.querySelector("#detailPotBalance").textContent = money(pot.balance);
+  document.querySelector("#detailPotTarget").textContent = pot.target ? `${money(pot.target)} target` : "No target";
+  document.querySelector("#editDetailPot").hidden = Boolean(pot.system);
+  els.txPot.value = activePotId;
+  els.txPot.disabled = true;
+  renderTransactionList(els.detailTransactionList, activePotId);
 }
 
 function transactionTitle(tx) {
@@ -649,7 +698,16 @@ function resetPotForm() {
 }
 
 function switchView(view) {
-  document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
+  if (view !== "potDetail") activePotId = null;
+  const host = view === "potDetail" ? els.detailComposerHost : els.activityComposerHost;
+  host.appendChild(els.transactionComposer);
+  els.transactionForm.reset();
+  els.txToPot.setCustomValidity("");
+  els.txDate.value = todayISO();
+  els.toPotWrap.classList.add("hidden");
+  els.txPot.disabled = view === "potDetail";
+  setComposerOpen(false);
+  document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === (view === "potDetail" ? "overview" : view)));
   document.querySelectorAll(".view").forEach((panel) => panel.classList.remove("active"));
   document.querySelector(`#${view}View`).classList.add("active");
 }
@@ -668,7 +726,16 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.view));
 });
 
+els.toggleTransaction.addEventListener("click", () => setComposerOpen(els.transactionForm.hidden));
+document.querySelector("#backToPots").addEventListener("click", () => switchView("overview"));
+document.querySelector("#editDetailPot").addEventListener("click", () => {
+  const id = activePotId;
+  switchView("settings");
+  fillPotForm(id);
+});
+
 els.txType.addEventListener("change", () => {
+  els.txToPot.setCustomValidity("");
   els.toPotWrap.classList.toggle("hidden", els.txType.value !== "transfer");
 });
 
@@ -679,6 +746,11 @@ els.transactionForm.addEventListener("submit", (event) => {
   const pot = getPot(els.txPot.value);
   const toPot = getPot(els.txToPot.value);
   if (!pot || amount < 0) return;
+  if (type === "transfer" && (!toPot || toPot.id === pot.id)) {
+    els.txToPot.setCustomValidity("Choose a different destination pot.");
+    els.txToPot.reportValidity();
+    return;
+  }
 
   if (type === "addition") {
     updatePotBalance(pot.id, amount);
@@ -704,9 +776,13 @@ els.transactionForm.addEventListener("submit", (event) => {
 
   els.transactionForm.reset();
   els.txDate.value = todayISO();
+  els.toPotWrap.classList.add("hidden");
+  setComposerOpen(false);
   saveState();
   render();
 });
+
+els.txToPot.addEventListener("change", () => els.txToPot.setCustomValidity(""));
 
 els.addSplit.addEventListener("click", () => {
   if (!state.pots.length) return;

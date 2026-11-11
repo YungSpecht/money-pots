@@ -79,10 +79,11 @@
         </section>
 
         <section class="view" id="activityView">
-          <div class="two-column">
-            <section class="tool-panel">
-              <h2>New transaction</h2>
-              <form id="transactionForm" class="form-grid">
+          <div class="transaction-workspace">
+            <div id="activityComposerHost">
+            <section class="tool-panel" id="transactionComposer">
+              <button class="secondary-action full-width" id="toggleTransaction" type="button" aria-expanded="false" aria-controls="transactionForm">New transaction</button>
+              <form id="transactionForm" class="form-grid" hidden>
                 <label>
                   Type
                   <select id="txType">
@@ -115,6 +116,7 @@
                 <button class="primary-action full" type="submit">Save transaction</button>
               </form>
             </section>
+            </div>
 
             <section class="history-panel">
               <div class="section-heading compact">
@@ -136,6 +138,25 @@
                 </select>
               </div>
               <div class="transaction-list" id="transactionList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="potDetailView">
+          <div class="section-heading">
+            <button class="secondary-action" id="backToPots" type="button">Back to pots</button>
+            <button class="secondary-action" id="editDetailPot" type="button">Edit pot</button>
+          </div>
+          <div class="pot-detail-heading">
+            <h2 id="detailPotName"></h2>
+            <strong id="detailPotBalance"></strong>
+            <p id="detailPotTarget"></p>
+          </div>
+          <div class="transaction-workspace">
+            <div id="detailComposerHost"></div>
+            <section class="history-panel">
+              <h2>Pot history</h2>
+              <div class="transaction-list" id="detailTransactionList"></div>
             </section>
           </div>
         </section>
@@ -248,7 +269,7 @@
           </div>
           <button class="icon-button small edit-pot" title="Edit pot" aria-label="Edit pot">&#9998;</button>
         </div>
-        <strong class="pot-balance"></strong>
+        <button type="button" class="pot-open"><strong class="pot-balance"></strong></button>
         <div class="progress-track">
           <span class="progress-fill"></span>
         </div>

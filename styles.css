@@ -351,9 +351,49 @@ h3 {
 
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+
+.form-grid > *, .transaction-workspace, .transaction-workspace > *,
+.transaction-row > *, .pot-title, .tool-panel, .history-panel {
+  min-width: 0;
+}
+
+.transaction-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+#transactionForm { margin-top: 16px; }
+
+.pot-card { position: relative; }
+.pot-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.pot-open::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
+.edit-pot { position: relative; z-index: 1; }
+.pot-card:has(.pot-open:focus-visible) { outline: 2px solid var(--accent); outline-offset: 3px; }
+.pot-detail-heading { margin: 20px 0; }
+.pot-detail-heading strong { display: block; font-size: 1.6rem; margin: 10px 0; }
+.pot-detail-heading p { color: var(--muted); }
+.transaction-row strong, .transaction-row span, .pot-title h3 { overflow-wrap: anywhere; }
+
+input[type="date"] {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+}
+input[type="date"]::-webkit-date-and-time-value { min-width: 0; text-align: left; }
+input[type="date"]::-webkit-datetime-edit { min-width: 0; padding: 0; }
 
 .split-editor {
   display: grid;
@@ -409,6 +449,8 @@ label {
 input,
 select {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -544,6 +586,8 @@ input[type="color"] {
 }
 
 @media (max-width: 560px) {
+  input, select { font-size: 16px; }
+  .tab { min-width: 0; padding: 0 6px; font-size: 0.9rem; }
   .app-shell {
     width: 100%;
     padding-left: 12px;
