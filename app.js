@@ -160,10 +160,21 @@ function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function contrastingText(color) {
+  const hex = /^#[0-9a-f]{6}$/i.test(color) ? color : DEFAULT_THEME.accent;
+  const channels = [1, 3, 5].map((offset) => {
+    const channel = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  return luminance > 0.179 ? "#000000" : "#ffffff";
+}
+
 function applyTheme() {
   const theme = { ...DEFAULT_THEME, ...state.settings.theme };
   const root = document.documentElement;
   root.style.setProperty("--accent", theme.accent);
+  root.style.setProperty("--on-accent", contrastingText(theme.accent));
   root.style.setProperty("--accent-dark", theme.header);
   root.style.setProperty("--header", theme.header);
   root.style.setProperty("--bg", theme.background);
@@ -444,6 +455,7 @@ function renderPots() {
     node.querySelector(".pot-title h3").textContent = pot.name;
     node.querySelector(".pot-balance").textContent = money(pot.balance);
     const openButton = node.querySelector(".pot-open");
+    openButton.dataset.potId = pot.id;
     openButton.setAttribute("aria-label", `Open ${pot.name}`);
     openButton.addEventListener("click", () => openPotDetail(pot.id));
     node.querySelector(".progress-fill").style.width = `${progress}%`;
@@ -572,13 +584,15 @@ function renderTransactionList(container, potFilter = "all", typeFilter = "all")
 function setComposerOpen(open) {
   els.transactionForm.hidden = !open;
   els.toggleTransaction.setAttribute("aria-expanded", String(open));
-  els.toggleTransaction.textContent = open ? "Cancel transaction" : "New transaction";
+  els.toggleTransaction.querySelector("span").textContent = open ? "Cancel transaction" : "New transaction";
+  els.toggleTransaction.querySelector("svg path").setAttribute("d", open ? "m6 6 12 12M18 6 6 18" : "M12 5v14M5 12h14");
 }
 
 function openPotDetail(id) {
   activePotId = id;
   switchView("potDetail");
   renderPotDetail();
+  document.querySelector("#detailPotName").focus({ preventScroll: true });
   window.scrollTo({ top: 0 });
 }
 
@@ -588,6 +602,12 @@ function renderPotDetail() {
   if (!pot) { switchView("overview"); return; }
   document.querySelector("#detailPotName").textContent = pot.name;
   document.querySelector("#detailPotBalance").textContent = money(pot.balance);
+  const detailStyle = document.querySelector("#potDetailView").style;
+  detailStyle.setProperty("--pot-color", pot.color);
+  detailStyle.setProperty("--on-pot-color", contrastingText(pot.color));
+  const progress = document.querySelector("#detailProgress");
+  progress.hidden = !pot.target;
+  progress.firstElementChild.style.width = `${pot.target ? Math.min(100, Math.max(0, pot.balance / pot.target * 100)) : 0}%`;
   document.querySelector("#detailPotTarget").textContent = pot.target ? `${money(pot.target)} target` : "No target";
   document.querySelector("#editDetailPot").hidden = Boolean(pot.system);
   els.txPot.value = activePotId;
@@ -661,6 +681,9 @@ function renderSwatches() {
 
 function renderEditorList() {
   els.editorList.innerHTML = "";
+  if (!state.pots.length) {
+    els.editorList.innerHTML = '<div class="empty-state">No pots yet.</div>';
+  }
   state.pots.forEach((pot) => {
     const row = document.createElement("article");
     row.className = "editor-row";
@@ -669,7 +692,9 @@ function renderEditorList() {
         <strong>${escapeHtml(pot.name)}</strong>
         <span>${money(pot.balance)} - ${pot.target ? `${money(pot.target)} target` : "no target"}</span>
       </div>
-      <button class="secondary-action" type="button">Edit</button>
+      <button class="icon-button" type="button" title="Edit pot" aria-label="Edit ${escapeHtml(pot.name)}">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m16 3 5 5M4 20l4-.8L21 6a2.1 2.1 0 0 0-3-3L5 16z" /></svg>
+      </button>
     `;
     row.querySelector("button").addEventListener("click", () => fillPotForm(pot.id));
     els.editorList.appendChild(row);
@@ -679,13 +704,22 @@ function renderEditorList() {
 function fillPotForm(id) {
   const pot = state.pots.find((item) => item.id === id);
   if (!pot) return;
+  selectSettingsSection("pots");
   els.potId.value = pot.id;
   els.potName.value = pot.name;
   els.potBalance.value = pot.balance;
   els.potTarget.value = pot.target || "";
   els.potColor.value = pot.color || DEFAULT_THEME.accent;
   els.deletePot.hidden = false;
+  showPotEditor(`Edit ${pot.name}`);
+  renderSwatches();
   els.potName.focus();
+}
+
+function showPotEditor(title) {
+  document.querySelector("#potEditorTitle").textContent = title;
+  els.potForm.hidden = false;
+  els.resetPotForm.setAttribute("aria-expanded", "true");
 }
 
 function resetPotForm() {
@@ -695,6 +729,20 @@ function resetPotForm() {
   els.potTarget.value = "";
   els.potColor.value = DEFAULT_THEME.accent;
   els.deletePot.hidden = true;
+  els.potForm.hidden = true;
+  els.resetPotForm.setAttribute("aria-expanded", "false");
+}
+
+function selectSettingsSection(section) {
+  document.querySelectorAll("[data-settings]").forEach((button) => {
+    const active = button.dataset.settings === section;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "true");
+    else button.removeAttribute("aria-current");
+  });
+  document.querySelectorAll("[data-settings-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.settingsPanel !== section;
+  });
 }
 
 function switchView(view) {
@@ -707,7 +755,10 @@ function switchView(view) {
   els.toPotWrap.classList.add("hidden");
   els.txPot.disabled = view === "potDetail";
   setComposerOpen(false);
-  document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === (view === "potDetail" ? "overview" : view)));
+  document.querySelector("#appHeader").hidden = view === "potDetail";
+  document.querySelector("#appNavigation").hidden = view === "potDetail";
+  document.querySelector("#accountSummary").hidden = view !== "overview";
+  document.querySelectorAll("[data-view]").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
   document.querySelectorAll(".view").forEach((panel) => panel.classList.remove("active"));
   document.querySelector(`#${view}View`).classList.add("active");
 }
@@ -722,12 +773,19 @@ function escapeHtml(value) {
   })[char]);
 }
 
-document.querySelectorAll(".tab").forEach((tab) => {
+document.querySelectorAll("[data-view]").forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.view));
+});
+document.querySelectorAll("[data-settings]").forEach((button) => {
+  button.addEventListener("click", () => selectSettingsSection(button.dataset.settings));
 });
 
 els.toggleTransaction.addEventListener("click", () => setComposerOpen(els.transactionForm.hidden));
-document.querySelector("#backToPots").addEventListener("click", () => switchView("overview"));
+document.querySelector("#backToPots").addEventListener("click", () => {
+  const potId = activePotId;
+  switchView("overview");
+  [...els.potsGrid.querySelectorAll(".pot-open")].find((button) => button.dataset.potId === potId)?.focus();
+});
 document.querySelector("#editDetailPot").addEventListener("click", () => {
   const id = activePotId;
   switchView("settings");
@@ -870,7 +928,16 @@ els.potForm.addEventListener("submit", (event) => {
   render();
 });
 
-els.resetPotForm.addEventListener("click", resetPotForm);
+els.resetPotForm.addEventListener("click", () => {
+  resetPotForm();
+  showPotEditor("New pot");
+  renderSwatches();
+  els.potName.focus();
+});
+document.querySelector("#cancelPotEdit").addEventListener("click", () => {
+  resetPotForm();
+  els.resetPotForm.focus();
+});
 els.potColor.addEventListener("input", renderSwatches);
 
 els.deletePot.addEventListener("click", () => {
@@ -925,6 +992,10 @@ els.exportData.addEventListener("click", () => {
   link.click();
   URL.revokeObjectURL(url);
 });
+
+document.querySelector("#importBackup").addEventListener("click", () => els.importData.click());
+document.querySelector("#settingsImport").addEventListener("click", () => els.importData.click());
+document.querySelector("#settingsExport").addEventListener("click", () => els.exportData.click());
 
 els.importData.addEventListener("change", async (event) => {
   const file = event.target.files?.[0];

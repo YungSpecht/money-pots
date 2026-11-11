@@ -14,7 +14,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
+      <header class="topbar" id="appHeader">
         <div>
           <p class="eyebrow">Tagesgeldkonto Ledger</p>
           <h1>Money Pots</h1>
@@ -27,19 +27,19 @@
               <path d="M5 19h14" />
             </svg>
           </button>
-          <label class="icon-button file-button" title="Import backup" aria-label="Import backup">
+          <button class="icon-button" id="importBackup" type="button" title="Import backup" aria-label="Import backup">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M12 15V3" />
               <path d="m7 8 5-5 5 5" />
               <path d="M5 19h14" />
             </svg>
-            <input id="importData" type="file" accept="application/json" />
-          </label>
+          </button>
+          <input id="importData" type="file" accept="application/json" hidden />
         </div>
       </header>
 
       <main>
-        <section class="summary-grid" aria-label="Account summary">
+        <section class="summary-grid" id="accountSummary" aria-label="Account summary">
           <div class="summary-panel primary">
             <p>Total assigned</p>
             <strong id="totalBalance">&euro;0.00</strong>
@@ -62,7 +62,7 @@
           </div>
         </section>
 
-        <nav class="tabs" aria-label="Views">
+        <nav class="tabs" id="appNavigation" aria-label="Views">
           <button class="tab active" data-view="overview">Overview</button>
           <button class="tab" data-view="activity">Transactions</button>
           <button class="tab" data-view="settings">Settings</button>
@@ -82,7 +82,10 @@
           <div class="transaction-workspace">
             <div id="activityComposerHost">
             <section class="tool-panel" id="transactionComposer">
-              <button class="secondary-action full-width" id="toggleTransaction" type="button" aria-expanded="false" aria-controls="transactionForm">New transaction</button>
+              <button class="primary-action transaction-trigger" id="toggleTransaction" type="button" aria-expanded="false" aria-controls="transactionForm">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                <span>New transaction</span>
+              </button>
               <form id="transactionForm" class="form-grid" hidden>
                 <label>
                   Type
@@ -143,13 +146,19 @@
         </section>
 
         <section class="view" id="potDetailView">
-          <div class="section-heading">
-            <button class="secondary-action" id="backToPots" type="button">Back to pots</button>
-            <button class="secondary-action" id="editDetailPot" type="button">Edit pot</button>
-          </div>
+          <header class="detail-toolbar">
+            <button class="icon-button" id="backToPots" type="button" title="Back to pots" aria-label="Back to pots">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M5 12h14" /></svg>
+            </button>
+            <div class="detail-title"><span class="color-dot" aria-hidden="true"></span><h1 id="detailPotName" tabindex="-1"></h1></div>
+            <button class="icon-button" id="editDetailPot" type="button" title="Edit pot" aria-label="Edit pot">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m16 3 5 5M4 20l4-.8L21 6a2.1 2.1 0 0 0-3-3L5 16z" /></svg>
+            </button>
+          </header>
           <div class="pot-detail-heading">
-            <h2 id="detailPotName"></h2>
+            <p class="eyebrow">Pot balance</p>
             <strong id="detailPotBalance"></strong>
+            <div class="progress-track" id="detailProgress" hidden><span class="progress-fill"></span></div>
             <p id="detailPotTarget"></p>
           </div>
           <div class="transaction-workspace">
@@ -162,20 +171,28 @@
         </section>
 
         <section class="view" id="settingsView">
-          <div class="two-column">
-            <section class="tool-panel">
-              <h2>Monthly split</h2>
+          <h2 class="page-title">Settings</h2>
+          <div class="settings-layout">
+            <nav class="tabs settings-nav" aria-label="Settings sections">
+              <button class="tab active" type="button" data-settings="pots" aria-controls="potSettings" aria-current="true">Pots</button>
+              <button class="tab" type="button" data-settings="schedule" aria-controls="scheduleSettings">Schedule</button>
+              <button class="tab" type="button" data-settings="appearance" aria-controls="appearanceSettings">Appearance</button>
+              <button class="tab" type="button" data-settings="data" aria-controls="dataSettings">Data</button>
+            </nav>
+            <div class="settings-content">
+            <section class="settings-section" id="scheduleSettings" data-settings-panel="schedule" hidden>
+              <h3>Monthly transfer</h3>
               <form id="settingsForm" class="form-grid">
                 <label>
                   Transfer amount
                   <input id="settingAmount" type="text" inputmode="decimal" autocomplete="off" />
                 </label>
                 <label>
-                  Arrival day
+                  Day of month
                   <input id="settingDay" type="text" inputmode="numeric" autocomplete="off" />
                 </label>
                 <label>
-                  Interest APY
+                  Annual interest (%)
                   <input id="settingApy" type="text" inputmode="decimal" autocomplete="off" />
                 </label>
                 <label>
@@ -199,8 +216,8 @@
               </form>
             </section>
 
-            <section class="tool-panel">
-              <h2>Appearance</h2>
+            <section class="settings-section" id="appearanceSettings" data-settings-panel="appearance" hidden>
+              <h3>Theme colors</h3>
               <form id="appearanceForm" class="form-grid">
                 <label>
                   Accent
@@ -218,17 +235,18 @@
                   Panels
                   <input id="themeSurface" type="color" />
                 </label>
-                <div class="swatch-grid full" id="themeSwatches" aria-label="Theme presets"></div>
+                <div class="full"><h4>Presets</h4><div class="swatch-grid" id="themeSwatches" role="group" aria-label="Theme presets"></div></div>
                 <button class="primary-action full" type="submit">Save colors</button>
               </form>
-              <div class="danger-zone">
-                <button class="danger-action full-width" type="button" id="resetAllData">Reset everything</button>
-              </div>
             </section>
 
-            <section class="tool-panel">
-              <h2>Pot editor</h2>
-              <form id="potForm" class="form-grid">
+            <section class="settings-section" id="potSettings" data-settings-panel="pots">
+              <div class="settings-heading">
+                <h3>Manage pots</h3>
+                <button class="primary-action" type="button" id="resetPotForm" aria-controls="potForm" aria-expanded="false">New pot</button>
+              </div>
+              <form id="potForm" class="form-grid pot-editor" hidden>
+                <h4 class="full" id="potEditorTitle">New pot</h4>
                 <input id="potId" type="hidden" />
                 <label>
                   Name
@@ -249,12 +267,24 @@
                 <div class="swatch-grid full" id="potSwatches" aria-label="Pot color presets"></div>
                 <div class="button-row full">
                   <button class="primary-action" type="submit">Save pot</button>
-                  <button class="secondary-action" type="button" id="resetPotForm">New pot</button>
+                  <button class="secondary-action" type="button" id="cancelPotEdit">Cancel</button>
                   <button class="danger-action" type="button" id="deletePot">Delete</button>
                 </div>
               </form>
               <div class="editor-list" id="editorList"></div>
             </section>
+            <section class="settings-section" id="dataSettings" data-settings-panel="data" hidden>
+              <h3>Backups</h3>
+              <div class="button-row">
+                <button class="secondary-action" type="button" id="settingsExport">Export backup</button>
+                <button class="secondary-action" type="button" id="settingsImport">Import backup</button>
+              </div>
+              <div class="danger-zone">
+                <h4>Reset app data</h4>
+                <button class="danger-action" type="button" id="resetAllData">Reset everything</button>
+              </div>
+            </section>
+            </div>
           </div>
         </section>
       </main>
@@ -267,7 +297,9 @@
             <span class="color-dot"></span>
             <h3></h3>
           </div>
-          <button class="icon-button small edit-pot" title="Edit pot" aria-label="Edit pot">&#9998;</button>
+          <button class="icon-button small edit-pot" title="Edit pot" aria-label="Edit pot">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m16 3 5 5M4 20l4-.8L21 6a2.1 2.1 0 0 0-3-3L5 16z" /></svg>
+          </button>
         </div>
         <button type="button" class="pot-open"><strong class="pot-balance"></strong></button>
         <div class="progress-track">

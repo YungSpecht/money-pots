@@ -27,7 +27,7 @@ async function main() {
     page.on("pageerror", error => errors.push(error.message));
     const fixture = {
       settings: { currency: "EUR", monthlyTransfer: "", arrivalDay: "", interestApy: "", lastAutoPostMonth: "", splits: [], theme: { accent: "#45c6a3", header: "#12362f", background: "#10161d", surface: "#17212b" } },
-      pots: [{ id: "a", name: "Travel", balance: 500, target: 1000, color: "#45c6a3" }, { id: "b", name: "Savings", balance: 200, target: 0, color: "#6aa8ff" }],
+      pots: [{ id: "a", name: "Travel", balance: 500, target: 1000, color: "#b692f6" }, { id: "b", name: "Savings", balance: 200, target: 0, color: "#6aa8ff" }],
       unallocatedBalance: 10,
       transactions: [
         { id: "old", type: "addition", potId: "a", amount: 10, date: "2026-01-01", note: "old" },
@@ -62,6 +62,12 @@ async function main() {
     await page.getByRole("button", { name: "Overview", exact: true }).click();
     await page.getByRole("button", { name: "Open Travel", exact: true }).click();
     assert.equal(await page.locator("#detailPotName").textContent(), "Travel");
+    for (const selector of ["#appHeader", "#accountSummary", "#appNavigation"]) {
+      assert.equal(await page.locator(selector).isVisible(), false, `${selector} is hidden in the pot view`);
+    }
+    assert.equal(await page.locator("#editDetailPot").isVisible(), true);
+    const transactionColor = await page.locator("#toggleTransaction").evaluate(el => getComputedStyle(el).backgroundColor);
+    assert.equal(transactionColor, "rgb(182, 146, 246)");
     assert.deepEqual((await dates("#detailTransactionList")).map(s => s.slice(0, 10)), ["2026-03-01", "2026-02-01", "2026-01-01"]);
     assert.ok((await page.locator("#detailTransactionList .transaction-row").first().textContent()).includes("+"), "Incoming transfer is positive");
     async function operation(type, amount, date, destination) {
@@ -92,6 +98,7 @@ async function main() {
     await page.getByRole("button", { name: "Back to pots" }).click();
     await page.getByRole("button", { name: "Open Unallocated", exact: true }).click();
     assert.equal(await page.locator("#editDetailPot").isVisible(), false);
+    await page.getByRole("button", { name: "Back to pots" }).click();
     await page.getByRole("button", { name: "Transactions", exact: true }).click();
     await page.getByRole("button", { name: "New transaction", exact: true }).click();
     assert.equal(await page.locator("#txPot").isEnabled(), true);
@@ -110,8 +117,28 @@ async function main() {
     await page.getByRole("button", { name: "Overview", exact: true }).click();
     await page.getByRole("button", { name: "Open Travel", exact: true }).click();
     assert.equal(await page.locator("#detailTransactionList .transaction-row").count(), 7);
+    await page.locator("#editDetailPot").click();
+    assert.equal(await page.locator("#potForm").isVisible(), true);
+    assert.equal(await page.locator("#potName").inputValue(), "Travel");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(await page.locator("#potForm").isVisible(), false);
+    await page.getByRole("button", { name: "New pot", exact: true }).click();
+    assert.equal(await page.locator("#potName").inputValue(), "");
+    await page.locator("#potName").fill("Bike");
+    await page.locator("#potBalance").fill("50");
+    await page.getByRole("button", { name: "Save pot", exact: true }).click();
+    assert.equal(await page.locator("#potForm").isVisible(), false);
+    assert.ok((await page.locator("#editorList").textContent()).includes("Bike"));
+    await page.setViewportSize({ width: 393, height: 852 });
+    for (const [name, selector] of [["Schedule", "#scheduleSettings"], ["Appearance", "#appearanceSettings"], ["Data", "#dataSettings"], ["Pots", "#potSettings"]]) {
+      await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name, exact: true }).click();
+      assert.equal(await page.locator(selector).isVisible(), true);
+      assert.equal(await page.locator("[data-settings-panel]:visible").count(), 1);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({ path: path.join(os.tmpdir(), `money-pots-mobile-settings-${name.toLowerCase()}.png`), fullPage: true });
+    }
     assert.deepEqual(errors, []);
-    console.log("PASS: date order, collapsed form, mobile sizing, pot histories, all balance operations, Unallocated, desktop layout, JSON schema, export/import round trip.");
+    console.log("PASS: focused pot view, accent action, pot editor, settings navigation, date order, all balance operations, mobile/desktop sizing, and unchanged backup schema.");
     console.log(`Screenshots: ${os.tmpdir()}`);
   } finally {
     if (browser) await browser.close();
